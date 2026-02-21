@@ -1,0 +1,39 @@
+# HomeDesigner — Python Backend Dependencies
+# Install with: pip install -r requirements.txt
+# Python 3.12+ required
+
+# Core Framework
+fastapi>=0.115.0
+uvicorn>=0.34.0
+websockets>=13.0
+
+# Data Validation & Serialization
+pydantic>=2.0.0
+python-multipart>=0.0.9
+
+# Environment & Configuration
+python-dotenv>=1.0.0
+
+# HTTP Clients
+openai>=1.0.0
+httpx>=0.28.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Browser Automation (Furniture Search)
+browser-use>=0.2.0
+
+# Payment Processing (Checkout)
+stripe>=12.0.0
+stripe-agent-toolkit>=0.3.0
+
+# 3D Model Generation
+fal-client>=0.5.0
+
+# Database (Supabase)
+supabase>=2.0.0
+
+# Development & Linting (Optional)
+ruff>=0.15.1
+pytest>=8.0.0

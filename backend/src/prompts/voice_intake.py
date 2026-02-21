@@ -1,6 +1,6 @@
 """Prompt builders for voice intake conversation."""
 
-from ..models.schemas import UserPreferences
+import json
 
 
 def build_voice_intake_messages(
@@ -98,8 +98,7 @@ def _format_brief_json(brief: dict) -> str:
         elif isinstance(value, (int, float)):
             lines.append(f'  "{key}": {value},')
         else:
-            # Lists, dicts, etc.
-            lines.append(f'  "{key}": {value},')
+            lines.append(f'  "{key}": {json.dumps(value)},')
     lines.append("}")
 
     return "\n".join(lines)
