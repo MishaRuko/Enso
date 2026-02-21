@@ -13,6 +13,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 FAL_KEY = os.getenv("FAL_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 MIRO_API_TOKEN = os.getenv("MIRO_API_TOKEN", "")
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 
 # --- OpenRouter Models ---
 CLAUDE_MODEL = "anthropic/claude-opus-4.6"
