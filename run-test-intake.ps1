@@ -3,6 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 $base = "http://127.0.0.1:$Port"
 
