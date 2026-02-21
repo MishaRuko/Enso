@@ -12,6 +12,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 FAL_KEY = os.getenv("FAL_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+MIRO_API_TOKEN = os.getenv("MIRO_API_TOKEN", "")
 
 # --- OpenRouter Models ---
 CLAUDE_MODEL = "anthropic/claude-opus-4.6"
@@ -33,3 +34,15 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "http://127.0.0.1:54421")
 SUPABASE_ANON_KEY = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+# --- Backend ---
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+
+# --- ElevenLabs ---
+ELEVENLABS_AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID", "")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+
+# --- Feature Flags ---
+ENABLE_VOICE_AGENT = os.getenv("ENABLE_VOICE_AGENT", "true").lower() == "true"
+ENABLE_MIRO = os.getenv("ENABLE_MIRO", "true").lower() == "true"
