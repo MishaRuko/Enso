@@ -1,0 +1,19 @@
+#!/bin/sh
+
+echo "Running pre-commit checks..."
+
+make lint 2>&1
+if [ $? -ne 0 ]; then
+    echo "make lint failed. Fix errors and retry."
+    exit 1
+fi
+
+make check 2>&1
+if [ $? -ne 0 ]; then
+    echo "make check failed. Fix errors and retry."
+    exit 1
+fi
+
+git diff --name-only | xargs -r git add
+
+echo "Pre-commit checks passed."

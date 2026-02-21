@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+.venv/
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/launch.json
+.vscode/*.code-workspace
+
+# 3D output
+output/
+renders/
+*.stl
+*.step
+*.stp
+*.3mf
+*.glb
+*.gltf
+
+# Database
+*.db
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Node
+node_modules/
+.next/
+
+# TypeScript build artifacts
+tsconfig.tsbuildinfo
+
+# Data directory
+backend/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv
+uv.lock
+
+# Plans (local only)
+docs/plans/
+
+# Supabase local state
+supabase/.branches/
+supabase/.temp/
+
+# Furniture data cache
+backend/furniture_cache/
+backend/glb_cache/
+
+# Claude Code
+.claude/
+
+# Ruff cache
+.ruff_cache/

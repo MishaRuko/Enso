@@ -1,0 +1,39 @@
+[project]
+name = "homedesigner"
+version = "0.1.0"
+description = "AI Interior Designer — voice consultation, furniture search, 3D placement, one-click purchase"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "websockets>=13.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "openai>=1.0.0",
+    "python-multipart>=0.0.9",
+    "httpx>=0.28.0",
+    "Pillow>=10.0.0",
+    "browser-use>=0.2.0",
+    "stripe>=12.0.0",
+    "stripe-agent-toolkit>=0.3.0",
+    "fal-client>=0.5.0",
+    "supabase>=2.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E402", "E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.1",
+    "pytest>=8.0.0",
+]

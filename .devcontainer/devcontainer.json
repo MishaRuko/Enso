@@ -1,0 +1,17 @@
+{
+	"name": "HomeDesigner",
+	"image": "mcr.microsoft.com/devcontainers/base:noble",
+	"postCreateCommand": "bash bootstrap.sh",
+	"forwardPorts": [
+		8100,
+		3000
+	],
+	"portsAttributes": {
+		"8100": {
+			"label": "Backend API"
+		},
+		"3000": {
+			"label": "Next.js Frontend"
+		}
+	}
+}
