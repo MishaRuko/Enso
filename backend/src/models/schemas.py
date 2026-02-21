@@ -1,6 +1,89 @@
 """Pydantic models for the HomeDesigner pipeline."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# --- Canonical Design Brief (unified schema for voice intake, DB, Miro, pipeline) ---
+
+
+class DesignBrief(BaseModel):
+    """
+    Canonical design brief JSON collected during voice consultation.
+    Used internally by voice intake agent, stored in DB, and sent to Miro.
+    Single source of truth for design preferences across the pipeline.
+    """
+
+    budget: float | None = Field(
+        default=None, description="Total budget as a number (EUR or specified currency)"
+    )
+    currency: str = Field(default="EUR", description="Currency code (ISO 4217)")
+    style: list[str] = Field(
+        default_factory=list,
+        description="Design styles (e.g., modern, minimalist, scandinavian)",
+    )
+    avoid: list[str] = Field(
+        default_factory=list, description="Things to avoid (e.g., bright colors, leather)"
+    )
+    rooms_priority: list[str] = Field(
+        default_factory=list, description="Rooms to design (e.g., living room, bedroom)"
+    )
+    must_haves: list[str] = Field(
+        default_factory=list, description="Essential items/features (e.g., large sofa)"
+    )
+    existing_items: list[str] = Field(
+        default_factory=list,
+        description="Furniture they already own and want to keep",
+    )
+    constraints: list[str] = Field(
+        default_factory=list,
+        description="Physical constraints (e.g., small space, low ceiling)",
+    )
+    vibe_words: list[str] = Field(
+        default_factory=list,
+        description="Mood/atmosphere words (e.g., cozy, bright, luxurious)",
+    )
+    reference_images: list[str] = Field(
+        default_factory=list, description="URLs or descriptions of reference images"
+    )
+    notes: str = Field(default="", description="Additional notes or comments")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "budget": 5000,
+                "currency": "EUR",
+                "style": ["modern", "minimalist"],
+                "avoid": ["dark colors", "leather"],
+                "rooms_priority": ["living room", "home office"],
+                "must_haves": ["large sofa", "standing desk"],
+                "existing_items": ["white bookshelf"],
+                "constraints": ["small space"],
+                "vibe_words": ["cozy", "bright"],
+                "reference_images": [],
+                "notes": "Plant lover, work from home",
+            }
+        }
+
+
+class DesignSession(BaseModel):
+    """Session state for a design consultation."""
+
+    session_id: str
+    status: str = Field(
+        default="collecting",
+        description="Session phase: collecting, confirmed, finalized",
+    )
+    brief: DesignBrief = Field(default_factory=DesignBrief)
+    history: list[dict] = Field(
+        default_factory=list, description="Conversation history [{role, content}, ...]"
+    )
+    missing_fields: list[str] = Field(
+        default_factory=list, description="Required fields still missing"
+    )
+    miro: dict = Field(
+        default_factory=lambda: {"board_id": None, "board_url": None},
+        description="Miro board metadata",
+    )
+
 
 # --- User Preferences (from voice consultation) ---
 

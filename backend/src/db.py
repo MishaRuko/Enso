@@ -9,12 +9,64 @@ from .config import SUPABASE_ANON_KEY, SUPABASE_URL
 
 _client: Client | None = None
 
+# In-memory storage for voice-intake sessions (swappable with Supabase later)
+_voice_intake_sessions: dict[str, dict] = {}
+
 
 def get_client() -> Client:
     global _client
     if _client is None:
         _client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     return _client
+
+
+# ---------------------------------------------------------------------------
+# Voice Intake Sessions (in-memory storage for now)
+# ---------------------------------------------------------------------------
+
+
+def new_voice_intake_session() -> dict:
+    """Create a new voice-intake session."""
+    session_id = uuid.uuid4().hex[:16]
+    session = {
+        "session_id": session_id,
+        "status": "collecting",  # collecting | confirmed | finalized
+        "brief": {
+            "budget": None,
+            "currency": "EUR",
+            "style": [],
+            "avoid": [],
+            "rooms_priority": [],
+            "must_haves": [],
+            "existing_items": [],
+            "constraints": [],
+            "vibe_words": [],
+            "reference_images": [],
+            "notes": "",
+        },
+        "history": [],
+        "missing_fields": [
+            "rooms_priority",
+            "budget",
+            "style",
+            "must_haves",
+        ],
+        "miro": {"board_id": None, "board_url": None},
+    }
+    _voice_intake_sessions[session_id] = session
+    return session
+
+
+def get_voice_intake_session(session_id: str) -> dict | None:
+    """Get a voice-intake session by ID."""
+    return _voice_intake_sessions.get(session_id)
+
+
+def save_voice_intake_session(session: dict) -> None:
+    """Save/update a voice-intake session."""
+    if "session_id" not in session:
+        raise ValueError("Session must have session_id")
+    _voice_intake_sessions[session["session_id"]] = session
 
 
 # ---------------------------------------------------------------------------

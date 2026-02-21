@@ -1,4 +1,4 @@
-"""Tool endpoints for voice-intake knowledge base operations."""
+"""Voice intake fallback endpoints for simple (non-realtime) WebSocket testing."""
 
 import logging
 
@@ -11,61 +11,24 @@ from ..tools.miro import create_board_from_brief
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/tool", tags=["tools"])
+router = APIRouter(prefix="/voice_intake", tags=["voice_intake"])
 
 
-class KBGetRequest(BaseModel):
+class TurnRequest(BaseModel):
     session_id: str
-
-
-class KBUpsertRequest(BaseModel):
-    session_id: str
-    brief_patch: dict
-
-
-class NextQuestionRequest(BaseModel):
-    session_id: str
-    transcript: str
+    user_text: str
 
 
 class FinalizeRequest(BaseModel):
     session_id: str
 
 
-@router.post("/kb_get")
-async def kb_get(req: KBGetRequest):
-    """Get current brief status for a session."""
-    session = get_voice_intake_session(req.session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    return {
-        "status": session["status"],
-        "brief": session["brief"],
-        "missing_fields": session["missing_fields"],
-        "miro_board_url": session["miro"]["board_url"],
-    }
-
-
-@router.post("/kb_upsert")
-async def kb_upsert(req: KBUpsertRequest):
-    """Manually update brief fields (for testing or direct input)."""
-    session = get_voice_intake_session(req.session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    # Merge patch into brief
-    for k, v in (req.brief_patch or {}).items():
-        if k in session["brief"]:
-            session["brief"][k] = v
-
-    save_voice_intake_session(session)
-    return {"brief": session["brief"]}
-
-
-@router.post("/next_question")
-async def next_question(req: NextQuestionRequest):
-    """Process one turn of voice intake conversation."""
+@router.post("/turn")
+async def turn(req: TurnRequest) -> dict:
+    """
+    Simple non-realtime fallback for one voice intake turn.
+    Same output as /tool/next_question.
+    """
     session = get_voice_intake_session(req.session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -73,7 +36,7 @@ async def next_question(req: NextQuestionRequest):
     # Run the intake turn
     try:
         result = await run_voice_intake_turn(
-            transcript=req.transcript,
+            transcript=req.user_text,
             brief_current=session["brief"],
             history=session["history"],
         )
@@ -86,7 +49,7 @@ async def next_question(req: NextQuestionRequest):
         session["brief"][k] = v
 
     # Append to history
-    session["history"].append({"role": "user", "content": req.transcript})
+    session["history"].append({"role": "user", "content": req.user_text})
     session["history"].append({"role": "assistant", "content": result.assistant_text})
 
     # Update missing fields
@@ -107,7 +70,7 @@ async def next_question(req: NextQuestionRequest):
 
 
 @router.post("/finalize")
-async def finalize(req: FinalizeRequest):
+async def finalize(req: FinalizeRequest) -> dict:
     """Finalize session and create Miro board."""
     session = get_voice_intake_session(req.session_id)
     if not session:

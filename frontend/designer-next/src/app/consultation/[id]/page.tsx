@@ -1,8 +1,9 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import VoiceAgent from "@/components/voice-agent";
+import TextIntake from "@/components/text-intake";
 import MoodBoard from "@/components/mood-board";
 import type { MoodBoardItem } from "@/components/mood-board";
 import PreferenceTags from "@/components/preference-tags";
@@ -12,12 +13,16 @@ const AGENT_ID = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID ?? "";
 
 export default function ConsultationPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = params.id;
 
+  // Allow ?mode=text to use text intake instead of voice agent
+  const textMode = searchParams.get("mode") === "text";
   const [moodItems, setMoodItems] = useState<MoodBoardItem[]>([]);
   const [preferences, setPreferences] = useState<Partial<UserPreferences>>({});
   const [saving, setSaving] = useState(false);
+  const [briefSummary, setBriefSummary] = useState<Record<string, any>>({});
 
   const handleMoodBoardAdd = useCallback((item: MoodBoardItem) => {
     setMoodItems((prev) => [...prev, item]);
@@ -44,6 +49,18 @@ export default function ConsultationPage() {
     setPreferences((prev) => ({ ...prev, room_type: type }));
   }, []);
 
+  const handleBriefUpdate = useCallback((brief: Record<string, any>) => {
+    setBriefSummary(brief);
+  }, []);
+
+  const handleIntakeComplete = useCallback(
+    (miroUrl: string) => {
+      // Navigate to session page with miro_board_url in state
+      router.push(`/session/${sessionId}`);
+    },
+    [sessionId, router]
+  );
+
   const handleComplete = useCallback(async () => {
     setSaving(true);
     try {
@@ -62,6 +79,76 @@ export default function ConsultationPage() {
     }
   }, [preferences, sessionId, router]);
 
+  // In text mode, show full-width text intake; in voice mode, show two-column layout
+  if (textMode) {
+    return (
+      <main style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+        <section style={{ flex: 1, overflow: "auto", padding: "1.5rem 2rem" }}>
+          <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+            <div style={{ marginBottom: "2rem" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.25rem 0.75rem",
+                  borderRadius: "var(--radius-full)",
+                  background: "var(--accent-subtle)",
+                  border: "1px solid rgba(59,130,246,0.2)",
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  color: "var(--accent)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <span
+                  style={{
+                    width: "6px",
+                    height: "6px",
+                    borderRadius: "50%",
+                    background: "var(--accent)",
+                  }}
+                />
+                Text Consultation
+              </div>
+              <h1
+                style={{
+                  fontSize: "1.75rem",
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                  marginBottom: "0.375rem",
+                  background: "linear-gradient(135deg, var(--text), var(--text-secondary))",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
+              >
+                Design Consultation
+              </h1>
+              <p style={{ fontSize: "0.875rem", color: "var(--muted)", lineHeight: 1.5 }}>
+                Type naturally about your dream room — style, budget, colors, and lifestyle.
+              </p>
+            </div>
+
+            <TextIntake
+              sessionId={sessionId}
+              onComplete={handleIntakeComplete}
+              onBriefUpdate={handleBriefUpdate}
+              onStatusChange={(status) => {
+                if (status === "finalized") {
+                  // Brief is being finalized, will navigate on completion
+                }
+              }}
+            />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  // Voice mode (default): two-column layout with VoiceAgent + Mood Board
   return (
     <main
       style={{
