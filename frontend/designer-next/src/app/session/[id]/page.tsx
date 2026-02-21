@@ -115,7 +115,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
   // After early returns, session is guaranteed — narrow status to string
   const currentStatus = status!;
-  const roomData = session.room_data?.rooms?.[0];
+  const rooms = session.room_data?.rooms;
+  const roomData =
+    rooms && rooms.length > 0
+      ? rooms.reduce((a, b) => ((a.area_sqm ?? 0) >= (b.area_sqm ?? 0) ? a : b))
+      : undefined;
   const placements = session.placements?.placements;
   const hasFurniture = session.furniture_list && session.furniture_list.length > 0;
   const isFailed = currentStatus.endsWith("_failed");
@@ -197,6 +201,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               <RoomViewer
                 roomData={roomData}
                 roomGlbUrl={session.room_glb_url}
+                allRooms={rooms}
                 placements={undefined}
                 furnitureItems={undefined}
                 floorplanUrl={session.floorplan_url}
@@ -218,11 +223,12 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 <p
                   style={{
                     fontSize: "0.875rem",
-                    color: "var(--muted)",
-                    background: "rgba(255,255,255,0.85)",
-                    backdropFilter: "blur(8px)",
+                    color: "var(--text-2)",
+                    background: "rgba(250,249,247,0.9)",
+                    backdropFilter: "blur(12px)",
                     padding: "0.375rem 1rem",
                     borderRadius: "var(--radius-full)",
+                    border: "1px solid rgba(236,230,219,0.5)",
                   }}
                 >
                   {roomData
@@ -231,21 +237,12 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 </p>
                 <button
                   type="button"
+                  className="btn-primary"
                   onClick={handleRunPipeline}
                   disabled={pipelineStarting}
                   style={{
-                    background: "#1a1a38",
-                    color: "#fff",
-                    padding: "14px 36px",
-                    borderRadius: "var(--radius-full)",
-                    fontWeight: 500,
                     fontSize: "1rem",
-                    letterSpacing: "0.02em",
-                    cursor: pipelineStarting ? "not-allowed" : "pointer",
-                    opacity: pipelineStarting ? 0.6 : 1,
-                    transition: "all var(--transition-slow)",
-                    border: "none",
-                    boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
+                    boxShadow: "0 6px 32px rgba(219,80,74,0.3)",
                   }}
                 >
                   {pipelineStarting ? "Starting..." : "Begin Design"}
@@ -311,20 +308,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               <p style={{ color: "var(--muted)", marginBottom: "2rem", fontSize: "0.9375rem" }}>
                 Something went wrong. You can try again.
               </p>
-              <button
-                type="button"
-                onClick={handleRetry}
-                style={{
-                  background: "#1a1a38",
-                  color: "#fff",
-                  padding: "12px 28px",
-                  borderRadius: "var(--radius-full)",
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  transition: "all var(--transition-slow)",
-                  border: "none",
-                }}
-              >
+              <button type="button" className="btn-primary" onClick={handleRetry}>
                 Try Again
               </button>
             </CenterMessage>
@@ -336,6 +320,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               <RoomViewer
                 roomData={roomData}
                 roomGlbUrl={session.room_glb_url}
+                allRooms={rooms}
                 placements={placements}
                 furnitureItems={session.furniture_list}
                 floorplanUrl={session.floorplan_url}
@@ -504,14 +489,14 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
                 gap: 8,
                 padding: "6px 12px",
                 borderRadius: 8,
-                background: "rgba(255,255,255,0.6)",
+                background: "rgba(250,249,247,0.7)",
                 backdropFilter: "blur(8px)",
-                border: "1px solid rgba(26,26,56,0.05)",
+                border: "1px solid rgba(236,230,219,0.5)",
                 animation: "fadeUp 0.3s ease-out",
                 fontSize: "0.8125rem",
               }}
             >
-              <span style={{ color: "#4caf50", fontSize: "0.875rem", flexShrink: 0 }}>
+              <span style={{ color: "var(--sage)", fontSize: "0.875rem", flexShrink: 0 }}>
                 {"\u2713"}
               </span>
               <span style={{ color: "var(--text)", flex: 1 }}>
@@ -537,9 +522,9 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
             gap: 8,
             padding: "6px 12px",
             borderRadius: 8,
-            background: "rgba(255,255,255,0.6)",
+            background: "rgba(250,249,247,0.7)",
             backdropFilter: "blur(8px)",
-            border: "1px solid rgba(26,26,56,0.05)",
+            border: "1px solid rgba(236,230,219,0.5)",
             width: "100%",
             fontSize: "0.8125rem",
           }}
@@ -549,7 +534,7 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: "#e65100",
+              background: "var(--accent)",
               flexShrink: 0,
               animation: "progressPulse 1.5s ease-in-out infinite",
             }}

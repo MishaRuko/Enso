@@ -1,11 +1,13 @@
 """IKEA product scraper — searches IKEA's public search API via httpx."""
 
 import logging
+import re
 import uuid
 
 import httpx
 
 from ..models.schemas import FurnitureDimensions, FurnitureItem
+from ..tools.ikea_glb import extract_ikea_glb
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +21,23 @@ _TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 def _parse_dimensions(product: dict) -> FurnitureDimensions | None:
     """Try to extract dimensions from IKEA product data."""
     try:
+        # Try explicit fields first
         width = product.get("itemWidth", 0)
         height = product.get("itemHeight", 0)
         depth = product.get("itemDepth", 0)
         if width or height or depth:
             return FurnitureDimensions(width_cm=width, depth_cm=depth, height_cm=height)
+
+        # Parse itemMeasureReferenceText like "60x47x83 cm" or "50 cm"
+        measure = product.get("itemMeasureReferenceText", "")
+        if measure and "cm" in measure:
+            nums = [float(n) for n in re.findall(r"[\d.]+", measure.split("cm")[0])]
+            if len(nums) >= 3:
+                return FurnitureDimensions(width_cm=nums[0], depth_cm=nums[1], height_cm=nums[2])
+            if len(nums) == 2:
+                return FurnitureDimensions(width_cm=nums[0], depth_cm=nums[1], height_cm=nums[1])
+            if len(nums) == 1:
+                return FurnitureDimensions(width_cm=nums[0], depth_cm=nums[0], height_cm=nums[0])
     except Exception:
         pass
     return None
@@ -85,23 +99,32 @@ async def search_ikea(
     *,
     country: str = "fr",
     lang: str = "fr",
-    limit: int = 5,
+    limit: int = 1,
+    require_glb: bool = True,
 ) -> list[FurnitureItem]:
     """Search IKEA's public search API and return parsed FurnitureItem list.
+
+    When require_glb is True, fetches extra results and filters to only items
+    with a 3D model (GLB) available on their product page. Tries each result
+    until `limit` items with GLB are found.
 
     Args:
         query: Search query string (e.g. "3-seat sofa grey fabric").
         country: IKEA country code (default "fr" for France).
         lang: Language code (default "fr").
-        limit: Maximum number of results to return.
+        limit: Number of results to return (with GLB if require_glb).
+        require_glb: If True, only return items that have a GLB model.
 
     Returns:
         List of FurnitureItem parsed from search results.
     """
+    # Fetch more candidates when filtering for GLB
+    fetch_size = min(limit * 4, 24) if require_glb else min(limit, 24)
+
     url = _IKEA_SEARCH_URL.format(country=country, lang=lang)
     params = {
         "q": query,
-        "size": min(limit, 24),
+        "size": fetch_size,
         "types": "PRODUCT",
     }
     headers = {
@@ -109,13 +132,12 @@ async def search_ikea(
         "User-Agent": "HomeDesigner/1.0",
     }
 
-    # Simplify query: IKEA API rejects long/complex queries with 400
     words = query.split()
     if len(words) > 3:
         query = " ".join(words[:3])
         params["q"] = query
 
-    logger.info("Searching IKEA: query=%r country=%s limit=%d", query, country, limit)
+    logger.info("Searching IKEA: query=%r country=%s fetch=%d need=%d glb=%s", query, country, fetch_size, limit, require_glb)
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -129,7 +151,6 @@ async def search_ikea(
         logger.error("IKEA API request failed: %s", e)
         return []
 
-    # Navigate response structure: searchResultPage -> products -> main -> items
     try:
         items_data = (
             data.get("searchResultPage", {})
@@ -141,12 +162,32 @@ async def search_ikea(
         logger.warning("Unexpected IKEA response structure")
         items_data = []
 
-    results: list[FurnitureItem] = []
-    for item_wrapper in items_data[:limit]:
+    candidates: list[FurnitureItem] = []
+    for item_wrapper in items_data:
         product = item_wrapper.get("product", item_wrapper)
         parsed = _parse_product(product, country, lang)
         if parsed:
-            results.append(parsed)
+            candidates.append(parsed)
 
-    logger.info("IKEA search for %r returned %d results", query, len(results))
+    if not require_glb:
+        results = candidates[:limit]
+        logger.info("IKEA search for %r returned %d results (no GLB filter)", query, len(results))
+        return results
+
+    # Try GLB extraction for each candidate until we have enough
+    results: list[FurnitureItem] = []
+    for item in candidates:
+        if len(results) >= limit:
+            break
+        if not item.product_url:
+            continue
+        glb_url = await extract_ikea_glb(item.product_url)
+        if glb_url:
+            item.glb_url = glb_url
+            results.append(item)
+            logger.info("GLB found for %s: %s", item.name, glb_url)
+        else:
+            logger.info("No GLB for %s, skipping", item.name)
+
+    logger.info("IKEA search for %r: %d/%d candidates have GLB", query, len(results), len(candidates))
     return results

@@ -104,6 +104,10 @@ def update_furniture(item_id: str, updates: dict) -> dict:
     return get_client().table("furniture_items").update(updates).eq("id", item_id).execute().data[0]
 
 
+def delete_session_furniture(session_id: str) -> None:
+    get_client().table("furniture_items").delete().eq("session_id", session_id).execute()
+
+
 # ---------------------------------------------------------------------------
 # models_3d
 # ---------------------------------------------------------------------------
@@ -135,5 +139,7 @@ def list_models(furniture_item_id: str) -> list[dict]:
 
 def upload_to_storage(bucket: str, path: str, data: bytes, content_type: str = "image/png") -> str:
     client = get_client()
-    client.storage.from_(bucket).upload(path, data, file_options={"content-type": content_type})
+    client.storage.from_(bucket).upload(
+        path, data, file_options={"content-type": content_type, "upsert": "true"},
+    )
     return client.storage.from_(bucket).get_public_url(path)

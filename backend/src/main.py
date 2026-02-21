@@ -6,8 +6,10 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 import asyncio
 
+import httpx
 from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from . import db
@@ -42,6 +44,24 @@ class CreateSessionRequest(BaseModel):
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "homedesigner"}
+
+
+@app.get("/api/proxy-glb")
+async def proxy_glb(url: str):
+    """Proxy external GLB files to avoid CORS issues (e.g. IKEA CDN)."""
+    if not url.startswith("https://"):
+        raise HTTPException(400, "Only HTTPS URLs allowed")
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return Response(
+                content=resp.content,
+                media_type=resp.headers.get("content-type", "model/gltf-binary"),
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Failed to fetch GLB: {e}")
 
 
 @app.get("/api/status")
@@ -135,11 +155,25 @@ async def upload_floorplan(session_id: str, file: UploadFile):
 
 @app.post("/api/sessions/{session_id}/search")
 async def start_search(session_id: str):
+    from .workflow.furniture_search import search_furniture
+
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     db.update_session(session_id, {"status": "searching"})
     job = db.create_job(session_id, phase="furniture_search")
+
+    async def _run():
+        _logger = logging.getLogger("search_task")
+        try:
+            _logger.info("Starting furniture search for %s", session_id)
+            await search_furniture(session_id, job["id"])
+            _logger.info("Furniture search complete for %s", session_id)
+        except Exception:
+            _logger.exception("Furniture search failed for %s", session_id)
+
+    task = asyncio.create_task(_run())
+    task.add_done_callback(lambda t: t.result() if not t.cancelled() and not t.exception() else None)
     return {"job_id": job["id"]}
 
 

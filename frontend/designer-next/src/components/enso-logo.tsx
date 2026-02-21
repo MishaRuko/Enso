@@ -53,7 +53,7 @@ export function EnsoLogo({
               style={{
                 strokeDasharray: 160,
                 strokeDashoffset: 160,
-                animation: "ensoDrawStroke 1.5s ease-in-out forwards",
+                animation: "ensoDrawStroke 2s cubic-bezier(0.4, 0, 0.2, 1) forwards",
               }}
             />
           </mask>
@@ -101,7 +101,7 @@ export function ScrollEnso({
   const [phase, setPhase] = useState<"drawing" | "ready">("drawing");
 
   useEffect(() => {
-    const timer = setTimeout(() => setPhase("ready"), 1800);
+    const timer = setTimeout(() => setPhase("ready"), 2300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -119,7 +119,7 @@ export function ScrollEnso({
               style={{
                 strokeDasharray: 160,
                 strokeDashoffset: 160,
-                animation: "ensoDrawStroke 1.5s ease-in-out forwards",
+                animation: "ensoDrawStroke 2s cubic-bezier(0.4, 0, 0.2, 1) forwards",
               }}
             />
           </mask>
@@ -170,7 +170,7 @@ export function EnsoSpinner({ size = 48, color = "#1a1a38" }: { size?: number; c
         style={{
           strokeDasharray: 160,
           strokeDashoffset: 160,
-          animation: "ensoDrawLoop 2.4s ease-in-out infinite",
+          animation: "ensoDrawLoop 3s ease-in-out infinite",
         }}
       />
     </svg>

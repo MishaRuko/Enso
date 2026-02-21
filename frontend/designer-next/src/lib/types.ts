@@ -26,6 +26,8 @@ export interface RoomData {
   width_m: number;
   length_m: number;
   height_m: number;
+  x_offset_m: number;
+  z_offset_m: number;
   doors: DoorWindow[];
   windows: DoorWindow[];
   shape: string;
@@ -134,6 +136,7 @@ export interface TraceEvent {
   duration_ms?: number;
   image_url?: string;
   input_image?: string;
+  input_images?: string[];
   output_image?: string;
   input_prompt?: string;
   output_text?: string;

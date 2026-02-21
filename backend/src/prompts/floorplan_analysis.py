@@ -15,10 +15,12 @@ Return ONLY valid JSON (no markdown fences, no commentary) matching this schema:
 {
   "rooms": [
     {
-      "name": "string — e.g. living_room, bedroom, kitchen",
-      "width_m": "number — estimated width in metres",
-      "length_m": "number — estimated length in metres",
+      "name": "string — e.g. living_room, bedroom, kitchen, bathroom, hallway, studio",
+      "width_m": "number — room width in metres (east-west dimension)",
+      "length_m": "number — room length in metres (north-south dimension)",
       "height_m": "number — ceiling height, default 2.7 if unknown",
+      "x_offset_m": "number — X position of room's south-west corner within the apartment (0 = apartment west edge)",
+      "z_offset_m": "number — Z position of room's south-west corner within the apartment (0 = apartment south edge)",
       "doors": [
         { "wall": "north|south|east|west", "position_m": "number — distance from left edge of that wall", "width_m": "number" }
       ],
@@ -31,12 +33,20 @@ Return ONLY valid JSON (no markdown fences, no commentary) matching this schema:
   ]
 }
 
-Guidelines:
+## Coordinate System
+- The apartment's south-west corner (bottom-left of image) is origin (0, 0).
+- X axis: west → east (left → right in the image).
+- Z axis: south → north (bottom → top in the image).
+- North = top of image.
+- x_offset_m and z_offset_m define where each room's south-west corner sits within the apartment.
+
+## Guidelines
 - Use metric units throughout.
 - If the image contains a scale bar, use it; otherwise estimate from standard door widths (≈0.9 m).
 - Mark walls using compass directions (north = top of image).
 - Include ALL rooms visible in the floorplan.
-- Calculate area_sqm as width_m * length_m for rectangular rooms."""
+- Calculate area_sqm as width_m * length_m for rectangular rooms.
+- CRITICAL: x_offset_m and z_offset_m must be accurate — they define where furniture gets placed in the 3D model."""
 
 
 def parse_floorplan_prompt() -> str:

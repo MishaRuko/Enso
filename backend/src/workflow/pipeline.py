@@ -85,9 +85,20 @@ async def run_full_pipeline(session_id: str) -> None:
             "placing", "Placement complete", duration_ms=round(duration_ms),
         ))
 
-        # 3. Done
-        trace.append(_trace_event("complete", "Pipeline finished"))
-        db.update_session(session_id, {"status": "complete"})
+        # 3. Done — only mark complete if placement actually saved results
+        session_check = db.get_session(session_id)
+        has_placements = bool(
+            session_check
+            and session_check.get("placements")
+            and session_check["placements"].get("placements")
+        )
+        if has_placements:
+            trace.append(_trace_event("complete", "Pipeline finished"))
+            db.update_session(session_id, {"status": "complete"})
+        else:
+            trace.append(_trace_event("complete", "Pipeline finished (no placements)"))
+            logger.warning("Session %s: pipeline done but no placements saved", session_id)
+            db.update_session(session_id, {"status": "placement_ready"})
         db.update_job(job_id, {"status": "completed", "trace": trace})
 
         logger.info("Session %s: full pipeline completed", session_id)

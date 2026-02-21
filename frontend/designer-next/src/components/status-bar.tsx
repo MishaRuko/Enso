@@ -56,8 +56,9 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
   return (
     <div
       style={{
-        background: "rgba(255,255,255,0.95)",
-        backdropFilter: "blur(20px)",
+        background: "rgba(250,249,247,0.95)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
         borderBottom: "1px solid var(--border)",
         padding: "0",
         position: "relative",
@@ -78,8 +79,8 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
           style={{
             height: "100%",
             width: `${progressPercent}%`,
-            background: failed ? "var(--error)" : "#1a1a38",
-            transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+            background: failed ? "var(--error)" : "var(--accent)",
+            transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
           }}
         />
       </div>
@@ -113,7 +114,7 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
               letterSpacing: "0.04em",
             }}
           >
-            Enso
+            enso
           </span>
         </Link>
 
@@ -130,7 +131,7 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
                   style={{
                     width: "1.5rem",
                     height: "1px",
-                    background: isDone ? "#1a1a38" : isError ? "var(--error)" : "var(--border)",
+                    background: isDone ? "var(--sage)" : isError ? "var(--error)" : "var(--border)",
                     margin: "0 0.125rem",
                     transition: "background var(--transition-slow)",
                   }}
@@ -152,22 +153,22 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
                     : isActive
                       ? "#1a1a38"
                       : isDone
-                        ? "rgba(26,26,56,0.06)"
+                        ? "rgba(124,140,110,0.1)"
                         : "transparent",
                   color: isError
                     ? "var(--error)"
                     : isActive
-                      ? "#fff"
+                      ? "#faf9f7"
                       : isDone
-                        ? "#1a1a38"
-                        : "var(--muted)",
+                        ? "var(--sage)"
+                        : "var(--text-3)",
                   border: `1px solid ${
                     isError
                       ? "var(--error)"
                       : isActive
                         ? "#1a1a38"
                         : isDone
-                          ? "rgba(26,26,56,0.12)"
+                          ? "rgba(124,140,110,0.2)"
                           : "var(--border)"
                   }`,
                   animation: isInProgress ? "pulseGlow 2s ease-in-out infinite" : "none",

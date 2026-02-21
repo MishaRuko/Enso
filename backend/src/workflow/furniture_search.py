@@ -7,10 +7,11 @@ import time
 import uuid
 
 from ..agents.scraper import search_ikea
-from ..db import get_session, update_job, update_session, upsert_furniture
+from ..db import delete_session_furniture, get_session, update_job, update_session, upsert_furniture
 from ..models.schemas import FurnitureItem, RoomData, ShoppingListItem, UserPreferences
 from ..prompts.shopping_list import shopping_list_prompt
 from ..tools.llm import call_claude
+from ..workflow.floorplan import pick_primary_room
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +67,21 @@ async def _search_for_item(
     item: ShoppingListItem,
     session_id: str,
     country: str = "fr",
+    room_width_cm: float = 0,
+    room_length_cm: float = 0,
 ) -> list[FurnitureItem]:
-    """Search IKEA for a single shopping list item and save results to DB."""
-    results = await search_ikea(item.query, country=country, limit=5)
+    """Search IKEA for a single shopping list item, requiring GLB models."""
+    results = await search_ikea(item.query, country=country, limit=1, require_glb=True)
 
     saved: list[FurnitureItem] = []
     for furniture in results:
+        # Skip items too large for the room (with 30% margin)
+        if furniture.dimensions and room_width_cm > 0:
+            max_dim = max(furniture.dimensions.width_cm, furniture.dimensions.depth_cm)
+            room_max = max(room_width_cm, room_length_cm)
+            if max_dim > room_max * 0.8:
+                logger.info("Skipping oversized %s (%dcm > room %dcm)", furniture.name, max_dim, room_max)
+                continue
         row = {
             "id": furniture.id or uuid.uuid4().hex[:16],
             "session_id": session_id,
@@ -117,17 +127,16 @@ async def search_furniture(session_id: str, job_id: str) -> list[FurnitureItem]:
         trace.append(_trace_event("started", "Furniture search started"))
         update_job(job_id, {"status": "running", "trace": trace})
 
+        # Clear stale furniture from previous runs
+        delete_session_furniture(session_id)
+
         session = get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
         room_data_raw = session.get("room_data")
         if room_data_raw and isinstance(room_data_raw, dict):
-            rooms = room_data_raw.get("rooms", [])
-            if rooms:
-                room = RoomData(**rooms[0])
-            else:
-                room = RoomData(**room_data_raw)
+            room = RoomData(**pick_primary_room(room_data_raw))
         else:
             room = RoomData(
                 name="Living Room",
@@ -175,7 +184,12 @@ async def search_furniture(session_id: str, job_id: str) -> list[FurnitureItem]:
         ))
         update_job(job_id, {"trace": trace})
 
-        tasks = [_search_for_item(item, session_id) for item in shopping_list]
+        room_w_cm = room.width_m * 100
+        room_l_cm = room.length_m * 100
+        tasks = [
+            _search_for_item(item, session_id, room_width_cm=room_w_cm, room_length_cm=room_l_cm)
+            for item in shopping_list
+        ]
         results_nested = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_items: list[FurnitureItem] = []

@@ -18,6 +18,14 @@ from ..tools.nanobananana import build_render_prompt, generate_colored_render
 logger = logging.getLogger(__name__)
 
 
+def pick_primary_room(room_data_raw: dict) -> dict:
+    """Pick the largest room by area from room_data. Used by all pipeline stages."""
+    rooms = room_data_raw.get("rooms", [])
+    if not rooms:
+        return room_data_raw
+    return max(rooms, key=lambda r: r.get("area_sqm", 0))
+
+
 def _trace_event(step: str, message: str, **kwargs) -> dict:
     """Build a structured trace event dict."""
     evt = {"step": step, "message": message, "timestamp": time.time()}

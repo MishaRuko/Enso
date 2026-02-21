@@ -11,7 +11,7 @@ import { ProceduralRoom } from "@/components/procedural-room";
 import { FurnitureModel } from "@/components/furniture-model";
 import type { RoomData, FurnitureItem, FurniturePlacement } from "@/lib/types";
 
-const BG_COLOR = new Color("#f5f0eb");
+const BG_COLOR = new Color("#faf9f7");
 
 class ViewerErrorBoundary extends Component<
   { children: ReactNode },
@@ -50,6 +50,7 @@ class ViewerErrorBoundary extends Component<
 interface RoomViewerProps {
   roomData?: RoomData;
   roomGlbUrl?: string | null;
+  allRooms?: RoomData[];
   placements?: FurniturePlacement[];
   furnitureItems?: FurnitureItem[];
   floorplanUrl?: string | null;
@@ -169,10 +170,60 @@ function RoomOBJModel({ url, onLoaded }: { url: string; onLoaded?: () => void })
   return <primitive object={cloned} />;
 }
 
-function RoomGLBModel({ url, onLoaded }: { url: string; onLoaded?: () => void }) {
+function RoomGLBModel({
+  url,
+  roomData,
+  allRooms,
+  onLoaded,
+}: {
+  url: string;
+  roomData?: RoomData;
+  allRooms?: RoomData[];
+  onLoaded?: () => void;
+}) {
   const { scene } = useGLTF(url);
-  const cloned = scene.clone();
-  applyFloorClip(cloned);
+  const cloned = useMemo(() => {
+    const c = scene.clone();
+    applyFloorClip(c);
+
+    // Auto-scale Trellis GLB to match room/apartment dimensions.
+    // When multiple rooms exist, the GLB is the full apartment —
+    // compute the actual footprint from room positions + sizes.
+    if (roomData) {
+      const box = new Box3().setFromObject(c);
+      const size = new Vector3();
+      box.getSize(size);
+
+      if (size.x > 0.01 && size.z > 0.01) {
+        let targetW = roomData.width_m;
+        let targetL = roomData.length_m;
+
+        if (allRooms && allRooms.length > 1) {
+          let maxX = 0;
+          let maxZ = 0;
+          for (const r of allRooms) {
+            maxX = Math.max(maxX, (r.x_offset_m ?? 0) + r.width_m);
+            maxZ = Math.max(maxZ, (r.z_offset_m ?? 0) + r.length_m);
+          }
+          targetW = maxX;
+          targetL = maxZ;
+        }
+
+        // Non-uniform X/Z scaling to match exact apartment footprint
+        const sX = targetW / size.x;
+        const sZ = targetL / size.z;
+        const sY = Math.max(sX, sZ);
+        c.scale.set(sX, sY, sZ);
+
+        const scaledBox = new Box3().setFromObject(c);
+        c.position.y -= scaledBox.min.y;
+        c.position.x -= scaledBox.min.x;
+        c.position.z -= scaledBox.min.z;
+      }
+    }
+
+    return c;
+  }, [scene, roomData, allRooms]);
 
   if (onLoaded) {
     queueMicrotask(onLoaded);
@@ -187,11 +238,20 @@ function SceneBackground() {
   return null;
 }
 
+
+
 interface SceneProps extends RoomViewerProps {
   onGlbLoaded?: () => void;
 }
 
-function Scene({ roomData, roomGlbUrl, placements, furnitureItems, onGlbLoaded }: SceneProps) {
+function Scene({
+  roomData,
+  roomGlbUrl,
+  allRooms,
+  placements,
+  furnitureItems,
+  onGlbLoaded,
+}: SceneProps) {
   const itemMap = new Map<string, FurnitureItem>();
   if (furnitureItems) {
     for (const item of furnitureItems) {
@@ -204,7 +264,7 @@ function Scene({ roomData, roomGlbUrl, placements, furnitureItems, onGlbLoaded }
   return (
     <>
       <SceneBackground />
-      <ambientLight intensity={0.4} color="#f5f0eb" />
+      <ambientLight intensity={0.4} color="#faf9f7" />
       <directionalLight
         position={[5, 10, 4]}
         intensity={1.2}
@@ -252,7 +312,12 @@ function Scene({ roomData, roomGlbUrl, placements, furnitureItems, onGlbLoaded }
           {isObjUrl(roomGlbUrl!) ? (
             <RoomOBJModel url={roomGlbUrl!} onLoaded={onGlbLoaded} />
           ) : (
-            <RoomGLBModel url={roomGlbUrl!} onLoaded={onGlbLoaded} />
+            <RoomGLBModel
+              url={roomGlbUrl!}
+              roomData={roomData}
+              allRooms={allRooms}
+              onLoaded={onGlbLoaded}
+            />
           )}
         </Suspense>
       )}
@@ -273,8 +338,8 @@ function Scene({ roomData, roomGlbUrl, placements, furnitureItems, onGlbLoaded }
       )}
 
       {/* Furniture models with GLB loading */}
-      {placements?.map((p) => (
-        <FurnitureModel key={p.item_id} placement={p} item={itemMap.get(p.item_id)} />
+      {placements?.map((p, i) => (
+        <FurnitureModel key={`${p.item_id}-${i}`} placement={p} item={itemMap.get(p.item_id)} />
       ))}
     </>
   );
@@ -292,6 +357,7 @@ export function preloadRoomGlb(url: string | null | undefined) {
 export function RoomViewer({
   roomData,
   roomGlbUrl,
+  allRooms,
   placements,
   furnitureItems,
   floorplanUrl,
@@ -301,9 +367,18 @@ export function RoomViewer({
     preloadRoomGlb(roomGlbUrl);
   }, [roomGlbUrl]);
 
-  const camX = roomData ? roomData.width_m * 1.1 : 8;
+  // Camera should frame the full apartment footprint, not just the primary room
+  const aptW =
+    allRooms && allRooms.length > 1
+      ? Math.max(...allRooms.map((r) => (r.x_offset_m ?? 0) + r.width_m))
+      : (roomData?.width_m ?? 8);
+  const aptL =
+    allRooms && allRooms.length > 1
+      ? Math.max(...allRooms.map((r) => (r.z_offset_m ?? 0) + r.length_m))
+      : (roomData?.length_m ?? 8);
+  const camX = aptW * 1.1;
   const camY = roomData ? Math.max(roomData.height_m * 1.8, 4) : 6;
-  const camZ = roomData ? roomData.length_m * 1.1 : 8;
+  const camZ = aptL * 1.1;
   const [glbLoaded, setGlbLoaded] = useState(!roomGlbUrl);
   const showLoading = !!roomGlbUrl && !glbLoaded;
   const startRef = useRef(Date.now());
@@ -320,7 +395,7 @@ export function RoomViewer({
       style={{
         width: "100%",
         height: "100%",
-        background: "linear-gradient(180deg, #faf8f5 0%, #f5f0eb 100%)",
+        background: "linear-gradient(180deg, #faf9f7 0%, #f3efe8 100%)",
         position: "relative",
         overflow: "hidden",
       }}
@@ -335,6 +410,7 @@ export function RoomViewer({
           <Scene
             roomData={roomData}
             roomGlbUrl={roomGlbUrl}
+            allRooms={allRooms}
             placements={placements}
             furnitureItems={furnitureItems}
             onGlbLoaded={() => setGlbLoaded(true)}
@@ -359,7 +435,7 @@ export function RoomViewer({
                 alignItems: "center",
                 justifyContent: "center",
                 gap: "1.25rem",
-                background: "linear-gradient(180deg, #faf8f5 0%, #f5f0eb 100%)",
+                background: "linear-gradient(180deg, #faf9f7 0%, #f3efe8 100%)",
                 zIndex: 5,
               }}
             >
@@ -415,9 +491,9 @@ export function RoomViewer({
           gap: "1rem",
           padding: "0.375rem 1rem",
           borderRadius: "var(--radius-full)",
-          background: "rgba(255,255,255,0.8)",
-          backdropFilter: "blur(12px)",
-          border: "1px solid rgba(26,26,56,0.06)",
+          background: "rgba(250,249,247,0.85)",
+          backdropFilter: "blur(16px)",
+          border: "1px solid rgba(236,230,219,0.5)",
           fontSize: "0.6875rem",
           color: "rgba(26,26,56,0.45)",
           letterSpacing: "0.02em",

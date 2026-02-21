@@ -337,6 +337,7 @@ export default function TraceDetailPage({ params }: PageProps) {
                     evt.input_prompt ||
                     evt.output_text ||
                     evt.input_image ||
+                    evt.input_images?.length ||
                     evt.output_image ||
                     evt.model ||
                     evt.data
@@ -406,6 +407,24 @@ export default function TraceDetailPage({ params }: PageProps) {
                                 style={styles.evtImage}
                                 onClick={() => setLightbox(evt.input_image!)}
                               />
+                            </div>
+                          )}
+                          {evt.input_images && evt.input_images.length > 0 && (
+                            <div style={styles.evtSection}>
+                              <div style={styles.evtLabel}>
+                                Images Sent ({evt.input_images.length})
+                              </div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                {evt.input_images.map((imgUrl, imgIdx) => (
+                                  <img
+                                    key={imgIdx}
+                                    src={imgUrl}
+                                    alt={`input ${imgIdx + 1}`}
+                                    style={styles.evtImage}
+                                    onClick={() => setLightbox(imgUrl)}
+                                  />
+                                ))}
+                              </div>
                             </div>
                           )}
                           {evt.input_prompt && (

@@ -28,10 +28,12 @@ You are an expert interior designer. Given a room and client preferences, create
 - Existing furniture to keep: {", ".join(preferences.existing_furniture) if preferences.existing_furniture else "none"}
 
 ## Instructions
-1. List ONLY furniture that fits in the room (check dimensions).
-2. Allocate budget proportionally — big items first.
-3. Include a search query for each item that would work well on IKEA or similar retailers.
-4. Set priority: "essential" for must-have items, "nice_to_have" for accent/decor.
+1. CRITICAL: Only suggest furniture appropriate for a **{room.name}**. A bathroom needs bathroom items (vanity, mirror, shelves, towel rack) — NOT sofas, beds, or dining tables.
+2. Every item MUST physically fit: max_width_cm must be LESS than {int(room.width_m * 100)} cm and max depth less than {int(room.length_m * 100)} cm. Leave at least 60 cm walkway clearance.
+3. Allocate budget proportionally — big items first.
+4. Include a search query for each item that would work well on IKEA. Be specific (e.g. "bathroom wall shelf white" not just "shelf").
+5. Set priority: "essential" for must-have items, "nice_to_have" for accent/decor.
+6. Aim for 6–10 items total.
 
 Return ONLY valid JSON (no markdown fences) as an array:
 [

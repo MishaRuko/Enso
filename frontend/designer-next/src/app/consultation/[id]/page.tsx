@@ -93,7 +93,7 @@ export default function ConsultationPage() {
               padding: "0.25rem 0.75rem",
               borderRadius: "var(--radius-full)",
               background: "var(--accent-subtle)",
-              border: "1px solid rgba(59,130,246,0.2)",
+              border: "1px solid rgba(219,80,74,0.15)",
               fontSize: "0.6875rem",
               fontWeight: 600,
               color: "var(--accent)",

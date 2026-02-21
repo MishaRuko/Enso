@@ -51,8 +51,9 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
         display: "flex",
         flexDirection: "column",
         height: "100%",
-        background: "rgba(255,255,255,0.95)",
-        backdropFilter: "blur(20px)",
+        background: "rgba(250,249,247,0.96)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
         borderLeft: "1px solid var(--border)",
         overflow: "hidden",
       }}
@@ -79,7 +80,7 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
             fontWeight: 500,
             padding: "0.125rem 0.625rem",
             borderRadius: "var(--radius-full)",
-            background: "rgba(26,26,56,0.06)",
+            background: "var(--parchment-subtle)",
             color: "#1a1a38",
             letterSpacing: "0.02em",
           }}
@@ -103,8 +104,8 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
                 borderRadius: "var(--radius-lg)",
                 cursor: "pointer",
                 transition: "all var(--transition-fast)",
-                background: isSelected ? "rgba(26,26,56,0.04)" : "transparent",
-                border: `1px solid ${isSelected ? "rgba(26,26,56,0.1)" : "transparent"}`,
+                background: isSelected ? "rgba(236,230,219,0.35)" : "transparent",
+                border: `1px solid ${isSelected ? "rgba(236,230,219,0.7)" : "transparent"}`,
                 animation: `fadeUp 0.3s ease-out ${i * 0.03}s both`,
               }}
             >
@@ -218,7 +219,7 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
           display: "flex",
           flexDirection: "column",
           gap: "0.75rem",
-          background: "rgba(255,255,255,0.98)",
+          background: "rgba(250,249,247,0.98)",
         }}
       >
         {/* Budget indicator bar */}
@@ -242,7 +243,7 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
             style={{
               height: "3px",
               borderRadius: "var(--radius-full)",
-              background: "rgba(26,26,56,0.06)",
+              background: "rgba(236,230,219,0.5)",
               overflow: "hidden",
             }}
           >
@@ -250,9 +251,9 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
               style={{
                 height: "100%",
                 width: `${items.length > 0 ? (selected.size / items.length) * 100 : 0}%`,
-                background: "#1a1a38",
+                background: "var(--accent)",
                 borderRadius: "var(--radius-full)",
-                transition: "width 0.3s ease",
+                transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
               }}
             />
           </div>
@@ -263,14 +264,14 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
           onClick={() => onApprove?.(Array.from(selected))}
           disabled={selected.size === 0}
           style={{
-            background: selected.size > 0 ? "#1a1a38" : "rgba(26,26,56,0.08)",
-            color: selected.size > 0 ? "#fff" : "var(--muted)",
+            background: selected.size > 0 ? "#1a1a38" : "rgba(236,230,219,0.4)",
+            color: selected.size > 0 ? "#faf9f7" : "var(--text-3)",
             padding: "0.75rem",
             borderRadius: "var(--radius-full)",
             fontWeight: 500,
             fontSize: "0.875rem",
             letterSpacing: "0.02em",
-            transition: "all var(--transition-slow)",
+            transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
             cursor: selected.size > 0 ? "pointer" : "not-allowed",
             opacity: selected.size === 0 ? 0.5 : 1,
             border: "none",

@@ -32,6 +32,8 @@ class RoomData(BaseModel):
     width_m: float
     length_m: float
     height_m: float = 2.7
+    x_offset_m: float = 0  # room's south-west corner X position within apartment
+    z_offset_m: float = 0  # room's south-west corner Z position within apartment
     doors: list[DoorWindow] = []
     windows: list[DoorWindow] = []
     shape: str = "rectangular"

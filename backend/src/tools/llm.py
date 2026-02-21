@@ -72,15 +72,20 @@ async def call_gemini_with_image(
     temperature: float = 0.3,
 ) -> str:
     """Call Gemini with a single image + text prompt. Returns the text content."""
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                _image_content_part(image_url_or_base64),
-            ],
-        }
-    ]
+    return await call_gemini_with_images(prompt, [image_url_or_base64], temperature=temperature)
+
+
+async def call_gemini_with_images(
+    prompt: str,
+    image_urls: list[str],
+    temperature: float = 0.3,
+) -> str:
+    """Call Gemini with multiple images + text prompt. Returns the text content."""
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    for url in image_urls:
+        content.append(_image_content_part(url))
+
+    messages = [{"role": "user", "content": content}]
     resp = await _client.chat.completions.create(
         model=GEMINI_MODEL,
         messages=messages,

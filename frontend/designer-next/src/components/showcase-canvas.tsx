@@ -180,10 +180,28 @@ function RoomOBJ({ url }: { url: string }) {
   return <primitive object={cloned} />;
 }
 
-function RoomGLB({ url }: { url: string }) {
+function RoomGLB({ url, session }: { url: string; session: DesignSession }) {
   const { scene } = useGLTF(url);
-  const cloned = scene.clone();
-  applyFloorClip(cloned);
+  const cloned = useMemo(() => {
+    const c = scene.clone();
+    applyFloorClip(c);
+
+    const room = session.room_data?.rooms?.[0];
+    if (room) {
+      const box = new Box3().setFromObject(c);
+      const size = new Vector3();
+      box.getSize(size);
+      if (size.x > 0.01 && size.z > 0.01) {
+        const scale = Math.min(room.width_m / size.x, room.length_m / size.z);
+        c.scale.setScalar(scale);
+        const sb = new Box3().setFromObject(c);
+        c.position.y -= sb.min.y;
+        c.position.x -= sb.min.x;
+        c.position.z -= sb.min.z;
+      }
+    }
+    return c;
+  }, [scene, session]);
   return <primitive object={cloned} receiveShadow castShadow />;
 }
 
@@ -224,13 +242,13 @@ function ShowcaseScene({
           {isObjUrl(session.room_glb_url) ? (
             <RoomOBJ url={session.room_glb_url} />
           ) : (
-            <RoomGLB url={session.room_glb_url} />
+            <RoomGLB url={session.room_glb_url} session={session} />
           )}
         </Suspense>
       )}
 
-      {session.placements?.placements?.map((p) => (
-        <FurnitureModel key={p.item_id} placement={p} item={itemMap.get(p.item_id)} />
+      {session.placements?.placements?.map((p, i) => (
+        <FurnitureModel key={`${p.item_id}-${i}`} placement={p} item={itemMap.get(p.item_id)} />
       ))}
     </>
   );
