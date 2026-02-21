@@ -1,8 +1,10 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-import VoiceAgent from "@/components/voice-agent";
+
+const VoiceAgent = dynamic(() => import("@/components/voice-agent"), { ssr: false });
 import MoodBoard from "@/components/mood-board";
 import type { MoodBoardItem } from "@/components/mood-board";
 import PreferenceTags from "@/components/preference-tags";

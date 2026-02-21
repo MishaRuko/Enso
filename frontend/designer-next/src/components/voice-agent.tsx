@@ -47,7 +47,7 @@ export default function VoiceAgent({
         agentId,
         connectionType: "webrtc",
         clientTools: {
-          addToMoodBoard: (params: { imageUrl: string; category: string; description: string }) => {
+          add_to_mood_board: (params: { imageUrl: string; category: string; description: string }) => {
             onMoodBoardAdd({
               imageUrl: params.imageUrl,
               category: params.category,
@@ -55,15 +55,15 @@ export default function VoiceAgent({
             });
             return "Image added to mood board";
           },
-          updatePreference: (params: { key: string; value: unknown }) => {
+          update_preference: (params: { key: string; value: unknown }) => {
             onPreferenceUpdate(params.key, params.value);
             return "Preference updated";
           },
-          setRoomType: (params: { type: string }) => {
+          set_room_type: (params: { type: string }) => {
             onRoomTypeSet(params.type);
             return `Room type set to ${params.type}`;
           },
-          completeConsultation: () => {
+          complete_consultation: () => {
             onComplete();
             return "Consultation complete, navigating to design phase";
           },

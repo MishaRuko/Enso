@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000 --turbopack",
-    "build": "next build",
-    "start": "next start",
+    "dev": "NODE_OPTIONS=--no-experimental-webstorage next dev --port 3000 --turbopack",
+    "build": "NODE_OPTIONS=--no-experimental-webstorage next build",
+    "start": "NODE_OPTIONS=--no-experimental-webstorage next start",
     "lint": "biome check --write .",
     "format": "biome format --write .",
     "check": "biome check . && eslint"
   },
   "dependencies": {
+    "@elevenlabs/react": "^0.14.0",
     "@react-three/drei": "^9.0.0",
     "@react-three/fiber": "^9.0.0",
     "@supabase/supabase-js": "^2.96.0",
