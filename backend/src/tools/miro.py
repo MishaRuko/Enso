@@ -1,10 +1,12 @@
 """Miro board creation for design briefs."""
 
+import json
 import logging
+import re
 
 import httpx
 
-from ..config import MIRO_API_TOKEN, PEXELS_API_KEY
+from ..config import MIRO_API_TOKEN, OPENROUTER_API_KEY, PEXELS_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +51,58 @@ def create_board_from_brief(brief: dict) -> str:
 # Vision board images
 # ---------------------------------------------------------------------------
 
+_PHRASES_MODEL = "anthropic/claude-haiku-4-5"
+
+
+def _llm_search_phrases(brief: dict) -> list[str]:
+    """Ask Claude to generate 6 Pexels search phrases tailored to the brief."""
+    if not OPENROUTER_API_KEY:
+        logger.warning("OPENROUTER_API_KEY not set — falling back to keyword queries")
+        return []
+
+    brief_summary = {k: v for k, v in brief.items() if v}
+    prompt = (
+        "Generate 6 specific Pexels image search phrases for an interior design mood board.\n"
+        f"Brief: {json.dumps(brief_summary)}\n\n"
+        "Return ONLY a JSON array of 6 short search phrases (2-4 words each) that work well "
+        "on Pexels. Mix: room shots with the style, key furniture pieces, colour palette, "
+        "and atmosphere/vibe. Example: [\"modern living room\", \"minimalist sofa\", "
+        "\"warm neutral tones\", \"scandinavian bedroom\", \"cosy reading nook\", "
+        "\"natural light interior\"]"
+    )
+
+    try:
+        resp = httpx.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": _PHRASES_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200,
+            },
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+        match = re.search(r"\[.*?\]", content, re.DOTALL)
+        if match:
+            phrases = json.loads(match.group())
+            logger.info("LLM generated %d search phrases", len(phrases))
+            return [str(p) for p in phrases[:6]]
+        logger.warning("LLM response had no JSON array: %s", content[:200])
+    except Exception as exc:
+        logger.warning("LLM phrase generation failed: %s", exc)
+
+    return []
+
+
 def _vision_queries(brief: dict) -> list[str]:
     """
-    Build image search queries from brief fields.
-    Combines style prefix with rooms, must-haves and vibe words to get
-    specific, on-brand results — e.g. "modern minimalist living room".
+    Fallback: build image search queries from brief fields without LLM.
+    Combines style prefix with rooms, must-haves and vibe words.
     """
     styles = brief.get("style", [])
     rooms = brief.get("rooms_priority", [])
@@ -75,63 +124,73 @@ def _vision_queries(brief: dict) -> list[str]:
     return queries[:6]
 
 
-def _resolve_image_url(query: str) -> str | None:
-    """Search Pexels for a query and return a direct landscape image URL."""
+def _resolve_image_urls(query: str, count: int = 2) -> list[str]:
+    """Search Pexels for a query and return up to `count` landscape image URLs."""
     if not PEXELS_API_KEY:
         logger.warning("PEXELS_API_KEY not set — skipping vision images")
-        return None
+        return []
     try:
         resp = httpx.get(
             "https://api.pexels.com/v1/search",
             headers={"Authorization": PEXELS_API_KEY},
-            params={"query": query, "per_page": 1, "orientation": "landscape"},
+            params={"query": query, "per_page": count, "orientation": "landscape"},
             timeout=8.0,
         )
         resp.raise_for_status()
         photos = resp.json().get("photos", [])
-        if photos:
-            return photos[0]["src"]["large"]
-        logger.warning("No Pexels results for: %s", query)
+        urls = [p["src"]["large"] for p in photos[:count]]
+        if not urls:
+            logger.warning("No Pexels results for: %s", query)
+        return urls
     except Exception as exc:
         logger.warning("Pexels fetch failed for '%s': %s", query, exc)
-    return None
+    return []
 
 
 def _add_vision_images(client: httpx.Client, headers: dict, board_id: str, brief: dict) -> None:
-    """Fetch images for each vision query and place them above the sticky notes."""
-    queries = _vision_queries(brief)
+    """
+    Generate search phrases via Claude, fetch 2 Pexels photos each, and place
+    them in a 4-column grid above the sticky notes.
+    Falls back to keyword-based queries if the LLM call fails.
+    """
+    queries = _llm_search_phrases(brief) or _vision_queries(brief)
     if not queries:
         return
 
     images_endpoint = f"{_MIRO_API_BASE}/boards/{board_id}/images"
     placed = 0
 
-    for i, query in enumerate(queries):
-        img_url = _resolve_image_url(query)
-        if not img_url:
-            continue
+    # 4-column grid — up to 12 images (6 queries × 2) fit in 3 rows
+    # Rows at y = -700, -440, -180  →  280 px clear before sticky notes at y = 100
+    _COLS = 4
+    _COL_XS = [-450, -150, 150, 450]
+    _ROW_Y_START = -700
+    _ROW_Y_STEP = 260
 
-        col = placed % 3
-        row = placed // 3
-        x = (col - 1) * 310    # columns at x = -310, 0, +310
-        y = -700 + row * 260   # rows at y = -700, -440
+    for query in queries:
+        urls = _resolve_image_urls(query, count=2)
+        for img_url in urls:
+            col = placed % _COLS
+            row = placed // _COLS
+            x = _COL_XS[col]
+            y = _ROW_Y_START + row * _ROW_Y_STEP
 
-        try:
-            client.post(
-                images_endpoint,
-                headers=headers,
-                json={
-                    "data": {"imageUrl": img_url},
-                    "geometry": {"width": 280},
-                    "position": {"x": x, "y": y, "origin": "center"},
-                },
-            )
-            placed += 1
-            logger.info("Added vision image %d/%d: %s", placed, len(queries), query)
-        except Exception:
-            logger.warning("Miro image upload failed for: %s", query)
+            try:
+                client.post(
+                    images_endpoint,
+                    headers=headers,
+                    json={
+                        "data": {"imageUrl": img_url},
+                        "geometry": {"width": 280},
+                        "position": {"x": x, "y": y, "origin": "center"},
+                    },
+                )
+                placed += 1
+                logger.info("Added vision image %d for query: %s", placed, query)
+            except Exception:
+                logger.warning("Miro image upload failed for: %s", query)
 
-    logger.info("Vision images added: %d", placed)
+    logger.info("Vision images added: %d total", placed)
 
 
 # ---------------------------------------------------------------------------
