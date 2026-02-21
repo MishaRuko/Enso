@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { uploadFloorplan } from "@/lib/backend";
+import { EnsoSpinner } from "@/components/enso-logo";
 
 interface FloorplanUploadProps {
   sessionId: string;
@@ -142,7 +143,7 @@ export function FloorplanUpload({ sessionId, onUploaded }: FloorplanUploadProps)
                   letterSpacing: "0.01em",
                 }}
               >
-                {dragging ? "Drop your floorplan here" : "Upload floorplan image"}
+                {dragging ? "Drop your floorplan here" : "Upload floorplan"}
               </div>
               <div style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
                 Drag and drop or click to browse
@@ -175,16 +176,7 @@ export function FloorplanUpload({ sessionId, onUploaded }: FloorplanUploadProps)
               backdropFilter: "blur(8px)",
             }}
           >
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                border: "3px solid rgba(26,26,56,0.1)",
-                borderTopColor: "#1a1a38",
-                borderRadius: "50%",
-                animation: "spin 0.8s linear infinite",
-              }}
-            />
+            <EnsoSpinner size={40} />
             <span
               style={{
                 color: "#1a1a38",

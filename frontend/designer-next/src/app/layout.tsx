@@ -15,8 +15,9 @@ const righteous = Righteous({
 });
 
 export const metadata: Metadata = {
-  title: "AI Interior Designer",
-  description: "Design your dream room with AI-powered furniture placement",
+  title: "Enso — your space, complete.",
+  description:
+    "AI-powered interior design agent. Voice consultation, intelligent furniture curation, 3D visualization.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

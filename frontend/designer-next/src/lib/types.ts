@@ -128,9 +128,16 @@ export interface DesignJob {
 }
 
 export interface TraceEvent {
-  timestamp: string;
-  phase: string;
-  type: "info" | "progress" | "error" | "result";
+  step: string;
   message: string;
+  timestamp?: number;
+  duration_ms?: number;
+  image_url?: string;
+  input_image?: string;
+  output_image?: string;
+  input_prompt?: string;
+  output_text?: string;
+  model?: string;
+  error?: string;
   data?: Record<string, unknown>;
 }

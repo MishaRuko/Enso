@@ -121,8 +121,14 @@ async def upload_floorplan(session_id: str, file: UploadFile):
     public_url = db.upload_to_storage("floorplans", storage_path, contents, content_type)
     updated = db.update_session(session_id, {"floorplan_url": public_url, "status": "analyzing_floorplan"})
 
-    # Fire-and-forget floorplan analysis
-    asyncio.create_task(process_floorplan(session_id))
+    # Fire-and-forget floorplan analysis with error logging
+    async def _run_floorplan():
+        try:
+            await process_floorplan(session_id)
+        except Exception:
+            logging.getLogger("floorplan_task").exception("Floorplan task failed for %s", session_id)
+
+    asyncio.create_task(_run_floorplan())
 
     return {"floorplan_url": updated["floorplan_url"]}
 
@@ -238,6 +244,58 @@ async def get_job(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+# ---------------------------------------------------------------------------
+# Tracing
+# ---------------------------------------------------------------------------
+
+@app.get("/api/sessions/{session_id}/jobs")
+async def list_session_jobs(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return db.list_jobs(session_id)
+
+
+# In-memory cancel signals for running pipelines
+_cancel_events: dict[str, asyncio.Event] = {}
+
+
+def register_cancel_event(session_id: str) -> asyncio.Event:
+    event = asyncio.Event()
+    _cancel_events[session_id] = event
+    return event
+
+
+def cleanup_cancel_event(session_id: str) -> None:
+    _cancel_events.pop(session_id, None)
+
+
+def is_cancelled(session_id: str) -> bool:
+    event = _cancel_events.get(session_id)
+    return event.is_set() if event else False
+
+
+@app.post("/api/sessions/{session_id}/cancel")
+async def cancel_session(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    event = _cancel_events.get(session_id)
+    if event:
+        event.set()
+        return {"status": "ok", "message": f"Cancellation requested for {session_id}"}
+
+    processing = [
+        "analyzing_floorplan", "searching", "sourcing", "placing", "placing_furniture",
+    ]
+    if session.get("status") in processing:
+        db.update_session(session_id, {"status": f"{session['status']}_failed"})
+        return {"status": "ok", "message": f"Session {session_id} marked as failed"}
+
+    return {"status": "not_found", "message": "No running pipeline to cancel"}
 
 
 if __name__ == "__main__":

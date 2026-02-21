@@ -47,7 +47,7 @@ async def upload_data_url_to_fal(data_url: str) -> str:
 async def generate_room_model(image_url: str) -> str:
     """Generate a 3D GLB model of a room from a rendered floorplan image.
 
-    Uses Trellis v2 with remesh enabled for cleaner room geometry.
+    Uses TRELLIS v2 which produces reliably textured/colored GLB models.
     This is specifically for room structure (walls/floor/ceiling), not furniture.
 
     Args:
@@ -60,10 +60,9 @@ async def generate_room_model(image_url: str) -> str:
         "image_url": image_url,
         "resolution": 1024,
         "texture_size": 2048,
-        "remesh": True,
     }
 
-    logger.info("fal.ai: generating room 3D model with Trellis v2 for %s", image_url)
+    logger.info("fal.ai: generating room 3D model with TRELLIS v2 for %s", image_url)
 
     result = await fal_client.subscribe_async(
         TRELLIS_MODEL,
@@ -97,13 +96,10 @@ async def generate_3d_model(
             "texture_size": 2048,
         }
     else:
-        # Hunyuan3D v2
+        # Hunyuan 3D v3.1 Rapid
         arguments = {
             "input_image_url": image_url,
-            "num_inference_steps": 30,
-            "guidance_scale": 7.5,
-            "octree_resolution": 256,
-            "textured_mesh": True,
+            "enable_pbr": True,
         }
 
     logger.info("fal.ai: generating 3D model with %s for %s", fal_model_id, image_url)

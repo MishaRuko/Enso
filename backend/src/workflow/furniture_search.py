@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import time
 import uuid
 
 from ..agents.scraper import search_ikea
@@ -14,11 +15,17 @@ from ..tools.llm import call_claude
 logger = logging.getLogger(__name__)
 
 
+def _trace_event(step: str, message: str, **kwargs) -> dict:
+    evt = {"step": step, "message": message, "timestamp": time.time()}
+    evt.update(kwargs)
+    return evt
+
+
 async def _generate_shopping_list(
     room: RoomData,
     preferences: UserPreferences,
-) -> list[ShoppingListItem]:
-    """Ask Claude to generate a shopping list from room data + preferences."""
+) -> tuple[list[ShoppingListItem], str, str]:
+    """Ask Claude to generate a shopping list. Returns (items, prompt, raw_response)."""
     prompt = shopping_list_prompt(room, preferences)
     logger.info("Generating shopping list for room=%s style=%s", room.name, preferences.style)
 
@@ -27,7 +34,6 @@ async def _generate_shopping_list(
         temperature=0.4,
     )
 
-    # Strip markdown fences if Claude wraps it
     text = raw.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
@@ -39,11 +45,11 @@ async def _generate_shopping_list(
         items_raw = json.loads(text)
     except json.JSONDecodeError:
         logger.error("Failed to parse shopping list JSON:\n%s", text[:500])
-        return []
+        return [], prompt, raw
 
     if not isinstance(items_raw, list):
         logger.error("Shopping list is not a list: %s", type(items_raw))
-        return []
+        return [], prompt, raw
 
     items: list[ShoppingListItem] = []
     for entry in items_raw:
@@ -53,7 +59,7 @@ async def _generate_shopping_list(
             logger.warning("Skipping invalid shopping list entry: %s — %s", entry, e)
 
     logger.info("Generated %d shopping list items", len(items))
-    return items
+    return items, prompt, raw
 
 
 async def _search_for_item(
@@ -105,15 +111,16 @@ async def search_furniture(session_id: str, job_id: str) -> list[FurnitureItem]:
     Returns:
         All found FurnitureItem results.
     """
-    try:
-        update_job(job_id, {"status": "running", "trace": [{"step": "started"}]})
+    trace: list[dict] = []
 
-        # 1. Load session
+    try:
+        trace.append(_trace_event("started", "Furniture search started"))
+        update_job(job_id, {"status": "running", "trace": trace})
+
         session = get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        # Parse room data — use first room if available, else build default
         room_data_raw = session.get("room_data")
         if room_data_raw and isinstance(room_data_raw, dict):
             rooms = room_data_raw.get("rooms", [])
@@ -130,55 +137,69 @@ async def search_furniture(session_id: str, job_id: str) -> list[FurnitureItem]:
                 area_sqm=20.0,
             )
 
-        # Parse preferences
         prefs_raw = session.get("preferences", {})
         preferences = UserPreferences(**(prefs_raw or {}))
 
-        update_job(job_id, {"trace": [{"step": "generating_shopping_list"}]})
+        # Generate shopping list via Claude
+        t0 = time.time()
+        trace.append(_trace_event("shopping_list", "Generating shopping list via Claude"))
+        update_job(job_id, {"trace": trace})
 
-        # 2. Generate shopping list
-        shopping_list = await _generate_shopping_list(room, preferences)
+        shopping_list, prompt_used, raw_response = await _generate_shopping_list(room, preferences)
+        duration_ms = (time.time() - t0) * 1000
+
+        trace.append(_trace_event(
+            "shopping_list", f"Claude returned {len(shopping_list)} items",
+            duration_ms=round(duration_ms),
+            input_prompt=prompt_used,
+            output_text=raw_response[:4000],
+            model="anthropic/claude-sonnet-4-5",
+        ))
+        update_job(job_id, {"trace": trace})
+
         if not shopping_list:
-            update_job(job_id, {
-                "status": "completed",
-                "trace": [{"step": "no_items", "message": "Claude returned empty shopping list"}],
-            })
+            trace.append(_trace_event("no_items", "Claude returned empty shopping list"))
+            update_job(job_id, {"status": "completed", "trace": trace})
             return []
 
-        # Save shopping list to session
         update_session(session_id, {
             "furniture_list": [item.model_dump() for item in shopping_list],
         })
 
-        update_job(job_id, {
-            "trace": [{"step": "searching_ikea", "items": len(shopping_list)}],
-        })
+        # Search IKEA in parallel
+        queries = [item.query for item in shopping_list]
+        t0 = time.time()
+        trace.append(_trace_event(
+            "searching_ikea", f"Searching IKEA for {len(shopping_list)} items",
+            data={"queries": queries},
+        ))
+        update_job(job_id, {"trace": trace})
 
-        # 3. Search IKEA in parallel for all items
         tasks = [_search_for_item(item, session_id) for item in shopping_list]
         results_nested = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Flatten results, skip errors
         all_items: list[FurnitureItem] = []
+        errors_count = 0
         for result in results_nested:
             if isinstance(result, list):
                 all_items.extend(result)
             elif isinstance(result, Exception):
+                errors_count += 1
                 logger.warning("Search task failed: %s", result)
 
-        # 4. Update job as completed
-        update_job(job_id, {
-            "status": "completed",
-            "trace": [
-                {"step": "done", "total_items": len(all_items)},
-            ],
-        })
+        duration_ms = (time.time() - t0) * 1000
+        trace.append(_trace_event(
+            "search_done", f"Found {len(all_items)} items ({errors_count} search errors)",
+            duration_ms=round(duration_ms),
+        ))
 
-        # Update session with found furniture and status
         update_session(session_id, {
             "status": "furniture_found",
             "furniture_list": [item.model_dump() for item in all_items],
         })
+
+        trace.append(_trace_event("completed", "Furniture search complete"))
+        update_job(job_id, {"status": "completed", "trace": trace})
 
         logger.info(
             "Furniture search complete: session=%s items=%d", session_id, len(all_items)
@@ -187,11 +208,9 @@ async def search_furniture(session_id: str, job_id: str) -> list[FurnitureItem]:
 
     except Exception as e:
         logger.error("Furniture search pipeline failed: %s", e, exc_info=True)
+        trace.append(_trace_event("error", f"Search failed: {e}", error=str(e)))
         try:
-            update_job(job_id, {
-                "status": "failed",
-                "trace": [{"step": "error", "message": str(e)}],
-            })
+            update_job(job_id, {"status": "failed", "trace": trace})
             update_session(session_id, {"status": "searching_failed"})
         except Exception:
             pass

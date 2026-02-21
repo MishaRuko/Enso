@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { EnsoLogo } from "@/components/enso-logo";
+
 const PHASES = [
   { key: "Upload", desc: "Upload floorplan" },
-  { key: "Analyze", desc: "AI analyzes layout" },
-  { key: "Search", desc: "Finding furniture" },
+  { key: "Analyze", desc: "Analyzing layout" },
+  { key: "Search", desc: "Curating furniture" },
   { key: "Source", desc: "Sourcing 3D models" },
   { key: "Place", desc: "Computing placement" },
   { key: "Done", desc: "Design complete" },
@@ -86,23 +89,33 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
           display: "flex",
           alignItems: "center",
           gap: "0.125rem",
-          padding: "0.625rem 1rem",
+          padding: "0.5rem 1rem",
         }}
       >
-        {/* App title */}
-        <div
+        {/* Enso brand mark + wordmark */}
+        <Link
+          href="/"
           style={{
-            fontFamily: "var(--font-display), sans-serif",
-            fontWeight: 400,
-            fontSize: "0.875rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.375rem",
             marginRight: "1.5rem",
-            color: "#1a1a38",
-            letterSpacing: "0.04em",
-            whiteSpace: "nowrap",
+            textDecoration: "none",
           }}
         >
-          HomeDesigner
-        </div>
+          <EnsoLogo size={20} color="#1a1a38" />
+          <span
+            style={{
+              fontFamily: "var(--font-display), sans-serif",
+              fontWeight: 400,
+              fontSize: "0.875rem",
+              color: "#1a1a38",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Enso
+          </span>
+        </Link>
 
         {PHASES.map((phase, i) => {
           const isActive = i === activeIdx;

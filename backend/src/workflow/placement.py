@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 
 from .. import db
 from ..models.schemas import (
@@ -17,6 +18,12 @@ from ..tools.placement_validator import validate_placements
 from .floorplan import _to_data_url
 
 logger = logging.getLogger(__name__)
+
+
+def _trace_event(step: str, message: str, **kwargs) -> dict:
+    evt = {"step": step, "message": message, "timestamp": time.time()}
+    evt.update(kwargs)
+    return evt
 
 MAX_ATTEMPTS = 1
 
@@ -49,15 +56,16 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
     Returns:
         PlacementResult with validated furniture placements.
     """
-    try:
-        db.update_job(job_id, {"status": "running", "trace": [{"step": "started"}]})
+    trace: list[dict] = []
 
-        # 1. Load session data
+    try:
+        trace.append(_trace_event("started", "Placement pipeline started"))
+        db.update_job(job_id, {"status": "running", "trace": trace})
+
         session = db.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        # Parse room — use first room from floorplan analysis
         room_data_raw = session.get("room_data")
         if room_data_raw and isinstance(room_data_raw, dict):
             rooms = room_data_raw.get("rooms", [])
@@ -68,10 +76,8 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
         else:
             raise ValueError(f"Session {session_id} has no room_data")
 
-        # Load selected furniture from DB (cap at 15 to keep prompt manageable)
         furniture_rows = db.list_furniture(session_id, selected_only=True)
         if not furniture_rows:
-            # Fall back to all furniture if none selected
             furniture_rows = db.list_furniture(session_id)
         if not furniture_rows:
             raise ValueError(f"Session {session_id} has no furniture items")
@@ -102,23 +108,23 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
 
         dims_map = _build_dims_map(furniture)
         floorplan_url = session.get("floorplan_url")
+        original_floorplan_url = floorplan_url
         if floorplan_url:
             floorplan_url = await _to_data_url(floorplan_url)
 
         db.update_session(session_id, {"status": "placing"})
 
-        # 2. Iterative placement with validation
         prompt = placement_prompt(room, furniture)
         errors: list[str] = []
         result: PlacementResult | None = None
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            db.update_job(
-                job_id,
-                {"trace": [{"step": f"gemini_attempt_{attempt}"}]},
-            )
+            t0 = time.time()
+            trace.append(_trace_event(
+                f"gemini_attempt_{attempt}", f"Calling Gemini (attempt {attempt})",
+            ))
+            db.update_job(job_id, {"trace": trace})
 
-            # Build the full prompt — include previous errors for retry
             if errors:
                 error_feedback = (
                     "\n\n## Validation Errors from Previous Attempt\n"
@@ -129,7 +135,6 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
             else:
                 full_prompt = prompt
 
-            # Call Gemini (with or without floorplan image)
             if floorplan_url:
                 raw = await call_gemini_with_image(full_prompt, floorplan_url)
             else:
@@ -138,16 +143,24 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
                     temperature=0.3,
                 )
 
-            # Parse response
+            duration_ms = (time.time() - t0) * 1000
+            trace.append(_trace_event(
+                f"gemini_response_{attempt}",
+                f"Gemini response ({len(raw)} chars)",
+                duration_ms=round(duration_ms),
+                input_prompt=full_prompt[:4000],
+                input_image=original_floorplan_url,
+                output_text=raw[:4000],
+                model="google/gemini-2.5-pro-preview",
+            ))
+            db.update_job(job_id, {"trace": trace})
+
             logger.info("Attempt %d: got Gemini response (%d chars)", attempt, len(raw))
             json_str = _extract_json(raw)
-            logger.info("Attempt %d: extracted JSON (%d chars)", attempt, len(json_str) if json_str else 0)
             try:
                 data = json.loads(json_str)
             except json.JSONDecodeError:
-                logger.warning(
-                    "Attempt %d: failed to parse JSON:\n%s", attempt, json_str[:500]
-                )
+                logger.warning("Attempt %d: failed to parse JSON:\n%s", attempt, json_str[:500])
                 errors = [
                     "Your response was not valid JSON. Return ONLY a JSON object with a 'placements' array."
                 ]
@@ -160,66 +173,41 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
                 errors = [f"Invalid response schema: {e}. Follow the exact output format."]
                 continue
 
-            # Validate spatial constraints
             errors = validate_placements(room, result.placements, dims_map)
             if not errors:
-                logger.info(
-                    "Placement validated on attempt %d with %d items",
-                    attempt,
-                    len(result.placements),
-                )
+                logger.info("Placement validated on attempt %d with %d items", attempt, len(result.placements))
                 break
 
-            logger.info(
-                "Attempt %d: %d validation errors, retrying", attempt, len(errors)
-            )
+            logger.info("Attempt %d: %d validation errors, retrying", attempt, len(errors))
 
-        # Use best result even if some errors remain after max attempts
         if result is None:
             raise ValueError("Gemini returned no parseable placement after all attempts")
 
         if errors:
             logger.warning(
                 "Accepting placement with %d remaining validation warnings after %d attempts",
-                len(errors),
-                MAX_ATTEMPTS,
+                len(errors), MAX_ATTEMPTS,
             )
 
-        # 3. Save placements to session
-        db.update_session(
-            session_id,
-            {
-                "placements": result.model_dump(),
-                "status": "placement_ready",
-            },
-        )
-        db.update_job(
-            job_id,
-            {
-                "status": "completed",
-                "trace": [
-                    {"step": "completed", "items_placed": len(result.placements)},
-                ],
-            },
-        )
+        db.update_session(session_id, {
+            "placements": result.model_dump(),
+            "status": "placement_ready",
+        })
 
-        logger.info(
-            "Placement complete: session=%s items=%d",
-            session_id,
-            len(result.placements),
-        )
+        trace.append(_trace_event(
+            "completed", f"Placed {len(result.placements)} items",
+            data={"items_placed": len(result.placements)},
+        ))
+        db.update_job(job_id, {"status": "completed", "trace": trace})
+
+        logger.info("Placement complete: session=%s items=%d", session_id, len(result.placements))
         return result
 
     except Exception as e:
         logger.error("Placement pipeline failed: %s", e, exc_info=True)
+        trace.append(_trace_event("error", f"Placement failed: {e}", error=str(e)))
         try:
-            db.update_job(
-                job_id,
-                {
-                    "status": "failed",
-                    "trace": [{"step": "error", "message": str(e)}],
-                },
-            )
+            db.update_job(job_id, {"status": "failed", "trace": trace})
             db.update_session(session_id, {"status": "placement_failed"})
         except Exception:
             pass

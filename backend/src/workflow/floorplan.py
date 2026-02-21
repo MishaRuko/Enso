@@ -1,9 +1,10 @@
-"""Floorplan processing pipeline — text removal + colored render + Trellis v2 room GLB + Gemini analysis."""
+"""Floorplan processing pipeline — Gemini analysis + isometric render + Trellis v2 room GLB."""
 
 import base64
 import json
 import logging
 import re
+import time
 
 import httpx
 
@@ -12,9 +13,16 @@ from ..models.schemas import FloorplanAnalysis
 from ..prompts.floorplan_analysis import floorplan_analysis_prompt
 from ..tools.fal_client import generate_room_model, upload_data_url_to_fal
 from ..tools.llm import call_gemini_with_image
-from ..tools.nanobananana import generate_colored_render, remove_text_from_image
+from ..tools.nanobananana import build_render_prompt, generate_colored_render
 
 logger = logging.getLogger(__name__)
+
+
+def _trace_event(step: str, message: str, **kwargs) -> dict:
+    """Build a structured trace event dict."""
+    evt = {"step": step, "message": message, "timestamp": time.time()}
+    evt.update(kwargs)
+    return evt
 
 
 async def _to_data_url(image_url: str) -> str:
@@ -42,22 +50,11 @@ def _extract_json(text: str) -> str:
 
 async def process_floorplan(session_id: str) -> FloorplanAnalysis:
     """Full floorplan pipeline:
-    1. Download floorplan
-    2. Clean text with Nano Banana
-    3. Analyse with Gemini (room dimensions for placement)
-    4. Generate colored architectural render with Nano Banana
-    5. Upload render to fal.ai storage
-    6. Generate room 3D GLB with Trellis v2
-    7. Save room_data + room_glb_url to session
-
-    Args:
-        session_id: The design session ID.
-
-    Returns:
-        Parsed FloorplanAnalysis with room data.
-
-    Raises:
-        ValueError: If the session or floorplan URL is missing.
+    1. Gemini analyses original floorplan (text labels help identification)
+    2. Single Nano Banana call: floorplan → isometric render (removes text + renders)
+    3. Upload render to fal.ai storage
+    4. Trellis v2 generates room 3D GLB
+    5. Save room_data + room_glb_url to session
     """
     session = db.get_session(session_id)
     if not session:
@@ -69,70 +66,112 @@ async def process_floorplan(session_id: str) -> FloorplanAnalysis:
 
     job = db.create_job(session_id, phase="floorplan_analysis")
     job_id = job["id"]
+    trace: list[dict] = []
 
     try:
-        db.update_job(job_id, {"status": "running", "trace": ["started"]})
+        trace.append(_trace_event("started", "Floorplan analysis started"))
+        db.update_job(job_id, {"status": "running", "trace": trace})
         db.update_session(session_id, {"status": "analyzing_floorplan"})
 
-        # --- Step 0: Convert localhost URL to base64 data URL ---
-        image_for_llm = await _to_data_url(floorplan_url)
+        image_data_url = await _to_data_url(floorplan_url)
 
-        # --- Step 1: Clean text/labels with Nano Banana ---
-        logger.info("Session %s: cleaning floorplan text via Nano Banana", session_id)
-        db.update_job(job_id, {"trace": ["started", "text_removal"]})
-        cleaned_image = await remove_text_from_image(image_for_llm)
-
-        # --- Step 2: Analyse with Gemini vision (for room dimensions needed by placement) ---
+        # --- Step 1: Gemini analyses the ORIGINAL floorplan ---
         logger.info("Session %s: analysing floorplan with Gemini", session_id)
-        db.update_job(job_id, {"trace": ["started", "text_removal", "gemini_analysis"]})
-        prompt = floorplan_analysis_prompt()
-        raw_response = await call_gemini_with_image(prompt, cleaned_image)
+        t0 = time.time()
+        trace.append(_trace_event("gemini_analysis", "Analysing floorplan with Gemini"))
+        db.update_job(job_id, {"trace": trace})
 
-        # --- Step 3: Parse JSON response ---
-        logger.info("Session %s: parsing Gemini response", session_id)
+        prompt = floorplan_analysis_prompt()
+        raw_response = await call_gemini_with_image(prompt, image_data_url)
+
         json_str = _extract_json(raw_response)
         data = json.loads(json_str)
         analysis = FloorplanAnalysis.model_validate(data)
-
         room_data = analysis.model_dump()
-        trace = ["started", "text_removal", "gemini_analysis", "parsed"]
+        rooms_found = len(analysis.rooms)
+        duration_ms = (time.time() - t0) * 1000
 
-        # --- Step 4: Generate colored architectural render ---
-        logger.info("Session %s: generating colored 3D render via Nano Banana", session_id)
-        db.update_job(job_id, {"trace": [*trace, "colored_render"]})
-        colored_render = await generate_colored_render(cleaned_image)
+        trace.append(_trace_event(
+            "parsed", f"Gemini found {rooms_found} room(s)",
+            duration_ms=round(duration_ms),
+            input_prompt=prompt,
+            input_image=floorplan_url,
+            output_text=raw_response[:4000],
+            model="google/gemini-2.5-pro-preview",
+        ))
+        db.update_job(job_id, {"trace": trace})
 
-        # --- Step 5: Upload render to fal.ai storage ---
+        # --- Step 2: Single Nano Banana call → isometric render ---
+        preferences = session.get("preferences") or {}
+        logger.info("Session %s: generating isometric render via Nano Banana", session_id)
+        t0 = time.time()
+        trace.append(_trace_event("isometric_render", "Generating isometric render"))
+        db.update_job(job_id, {"trace": trace})
+
+        render_prompt = build_render_prompt(preferences)
+        colored_render = await generate_colored_render(image_data_url, preferences)
+        duration_ms = (time.time() - t0) * 1000
+
+        trace.append(_trace_event(
+            "isometric_render", "Isometric render complete",
+            duration_ms=round(duration_ms),
+            input_prompt=render_prompt,
+            input_image=floorplan_url,
+            model="google/gemini-3-pro-image-preview",
+        ))
+        db.update_job(job_id, {"trace": trace})
+
+        # --- Step 3: Upload render to fal.ai storage ---
         logger.info("Session %s: uploading render to fal.ai storage", session_id)
-        db.update_job(job_id, {"trace": [*trace, "colored_render", "fal_upload"]})
+        t0 = time.time()
+        trace.append(_trace_event("fal_upload", "Uploading render to fal.ai"))
+        db.update_job(job_id, {"trace": trace})
+
         fal_image_url = await upload_data_url_to_fal(colored_render)
+        duration_ms = (time.time() - t0) * 1000
 
-        # --- Step 6: Generate room 3D GLB with Trellis v2 ---
+        trace.append(_trace_event(
+            "fal_upload", "Uploaded to fal.ai", duration_ms=round(duration_ms),
+            image_url=fal_image_url,
+            output_image=fal_image_url,
+        ))
+        db.update_job(job_id, {"trace": trace})
+
+        # --- Step 4: Generate room 3D GLB with Trellis v2 ---
         logger.info("Session %s: generating room 3D model with Trellis v2", session_id)
-        db.update_job(job_id, {"trace": [*trace, "colored_render", "fal_upload", "trellis_room"]})
-        room_glb_url = await generate_room_model(fal_image_url)
+        t0 = time.time()
+        trace.append(_trace_event("room_3d", "Generating room 3D model with TRELLIS v2"))
+        db.update_job(job_id, {"trace": trace})
 
-        # --- Step 7: Save everything ---
+        room_glb_url = await generate_room_model(fal_image_url)
+        duration_ms = (time.time() - t0) * 1000
+
+        trace.append(_trace_event(
+            "room_3d", "Room GLB generated",
+            duration_ms=round(duration_ms),
+            input_image=fal_image_url,
+            model="fal-ai/trellis-2",
+        ))
+
+        # --- Step 5: Save everything ---
         db.update_session(session_id, {
             "room_data": room_data,
             "room_glb_url": room_glb_url,
             "status": "floorplan_ready",
         })
-        db.update_job(job_id, {
-            "status": "completed",
-            "trace": [*trace, "colored_render", "fal_upload", "trellis_room", "completed"],
-        })
+
+        trace.append(_trace_event("completed", "Floorplan pipeline complete"))
+        db.update_job(job_id, {"status": "completed", "trace": trace})
 
         logger.info(
             "Session %s: floorplan pipeline complete — %d rooms found, GLB at %s",
-            session_id,
-            len(analysis.rooms),
-            room_glb_url,
+            session_id, rooms_found, room_glb_url,
         )
         return analysis
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Session %s: floorplan pipeline failed", session_id)
-        db.update_job(job_id, {"status": "failed"})
+        trace.append(_trace_event("error", f"Pipeline failed: {exc}", error=str(exc)))
+        db.update_job(job_id, {"status": "failed", "trace": trace})
         db.update_session(session_id, {"status": "floorplan_failed"})
         raise

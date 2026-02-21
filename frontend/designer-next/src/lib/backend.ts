@@ -23,8 +23,9 @@ export function getSession(id: string): Promise<DesignSession> {
   return apiFetch(`/api/sessions/${id}`);
 }
 
-export function listSessions(): Promise<{ sessions: DesignSession[] }> {
-  return apiFetch("/api/sessions");
+export async function listSessions(): Promise<DesignSession[]> {
+  const data = await apiFetch<DesignSession[] | { sessions: DesignSession[] }>("/api/sessions");
+  return Array.isArray(data) ? data : data.sessions;
 }
 
 // --- Floorplan ---
@@ -38,38 +39,34 @@ export function uploadFloorplan(sessionId: string, file: File): Promise<{ room_d
   });
 }
 
-// --- Furniture Search ---
-
-export function startSearch(sessionId: string): Promise<{ job_id: string }> {
-  return apiFetch(`/api/sessions/${sessionId}/search`, { method: "POST" });
-}
-
-// --- Placement ---
-
-export function startPlacement(sessionId: string): Promise<{ job_id: string }> {
-  return apiFetch(`/api/sessions/${sessionId}/place`, { method: "POST" });
-}
-
-// --- Checkout ---
-
-export function createCheckout(sessionId: string): Promise<{ payment_link: string }> {
-  return apiFetch(`/api/sessions/${sessionId}/checkout`, { method: "POST" });
-}
-
 // --- Pipeline ---
 
-export function runPipeline(sessionId: string): Promise<{ job_id: string }> {
+export function runPipeline(sessionId: string): Promise<{ status: string }> {
   return apiFetch(`/api/sessions/${sessionId}/pipeline`, { method: "POST" });
-}
-
-// --- Miro ---
-
-export function generateMiroBoard(sessionId: string): Promise<{ miro_board_url: string }> {
-  return apiFetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
 }
 
 // --- Jobs ---
 
 export function getJob(jobId: string): Promise<DesignJob> {
   return apiFetch(`/api/jobs/${jobId}`);
+}
+
+export function listSessionJobs(sessionId: string): Promise<DesignJob[]> {
+  return apiFetch(`/api/sessions/${sessionId}/jobs`);
+}
+
+// --- Cancel ---
+
+export function cancelSession(sessionId: string): Promise<{ status: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/cancel`, { method: "POST" });
+}
+
+// --- Stubs for frontend components (endpoints not yet wired) ---
+
+export function createCheckout(sessionId: string): Promise<{ payment_link: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/checkout`, { method: "POST" });
+}
+
+export function generateMiroBoard(sessionId: string): Promise<{ miro_board_url: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { FurnitureItem } from "@/lib/types";
 import { generateMiroBoard } from "@/lib/backend";
 import { CheckoutButton } from "./checkout-button";
+import { EnsoLogo } from "./enso-logo";
 
 interface FurnitureSidebarProps {
   sessionId: string;
@@ -67,22 +68,9 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#1a1a38"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-          </svg>
+          <EnsoLogo size={16} color="#1a1a38" />
           <span style={{ fontWeight: 600, fontSize: "0.875rem", letterSpacing: "0.01em" }}>
-            Furniture
+            Curated Pieces
           </span>
         </div>
         <span
@@ -244,7 +232,7 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
             }}
           >
             <span style={{ color: "var(--muted)" }}>
-              Total ({selected.size} of {items.length} items)
+              Total ({selected.size} of {items.length})
             </span>
             <span style={{ fontWeight: 700, fontSize: "1rem" }}>
               {formatPrice(total, currency)}

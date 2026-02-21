@@ -69,6 +69,18 @@ def get_job(job_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def list_jobs(session_id: str) -> list[dict]:
+    return (
+        get_client()
+        .table("design_jobs")
+        .select("*")
+        .eq("session_id", session_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+
 def update_job(job_id: str, updates: dict) -> dict:
     return get_client().table("design_jobs").update(updates).eq("id", job_id).execute().data[0]
 

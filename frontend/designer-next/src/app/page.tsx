@@ -1,19 +1,62 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createSession } from "@/lib/backend";
+import { EnsoLogo } from "@/components/enso-logo";
 
-const SPONSORS = [
-  { name: "Anthropic", label: "Claude AI" },
-  { name: "ElevenLabs", label: "Voice AI" },
-  { name: "Stripe", label: "Payments" },
-  { name: "Supabase", label: "Database" },
-  { name: "Miro", label: "Collaboration" },
-];
+/* ── Scroll-triggered fade-in wrapper ─────────────────────────── */
 
-const FEATURES = [
+function FadeIn({
+  children,
+  delay = 0,
+  style,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.15 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(20px)",
+        transition: `opacity 0.7s ease-out ${delay}s, transform 0.7s ease-out ${delay}s`,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ── Data ─────────────────────────────────────────────────────── */
+
+const STEPS = [
   {
+    num: "01",
+    label: "Describe",
+    desc: "Tell our AI about your style, budget, and space through natural conversation.",
     icon: (
       <svg
         width="24"
@@ -31,10 +74,11 @@ const FEATURES = [
         <line x1="8" y1="23" x2="16" y2="23" />
       </svg>
     ),
-    title: "Voice Consultation",
-    desc: "Describe your dream room to our AI consultant",
   },
   {
+    num: "02",
+    label: "Curate",
+    desc: "AI searches real furniture catalogs to find pieces that match your vision perfectly.",
     icon: (
       <svg
         width="24"
@@ -52,10 +96,11 @@ const FEATURES = [
         <rect x="14" y="14" width="7" height="7" />
       </svg>
     ),
-    title: "Smart Furniture Search",
-    desc: "AI finds real products matching your style and budget",
   },
   {
+    num: "03",
+    label: "Visualize",
+    desc: "See every curated piece placed in your actual room layout in full 3D.",
     icon: (
       <svg
         width="24"
@@ -72,10 +117,11 @@ const FEATURES = [
         <line x1="12" y1="22.08" x2="12" y2="12" />
       </svg>
     ),
-    title: "3D Room Visualization",
-    desc: "See furniture placed in your room in real-time 3D",
   },
   {
+    num: "04",
+    label: "Purchase",
+    desc: "Love what you see? Buy everything with a single click through Stripe checkout.",
     icon: (
       <svg
         width="24"
@@ -87,14 +133,102 @@ const FEATURES = [
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-        <line x1="1" y1="10" x2="23" y2="10" />
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <path d="M16 10a4 4 0 0 1-8 0" />
       </svg>
     ),
-    title: "One-Click Purchase",
-    desc: "Buy everything through Stripe with a single click",
   },
 ];
+
+const FEATURES = [
+  {
+    icon: (
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <line x1="12" y1="19" x2="12" y2="23" />
+        <line x1="8" y1="23" x2="16" y2="23" />
+      </svg>
+    ),
+    title: "Voice-First Design",
+    desc: "No forms. No menus. Just talk. Our ElevenLabs-powered voice agent has a natural conversation about your style preferences, budget, and space constraints — then translates it into design intent.",
+  },
+  {
+    icon: (
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="3" width="7" height="7" />
+        <rect x="14" y="3" width="7" height="7" />
+        <rect x="3" y="14" width="7" height="7" />
+        <rect x="14" y="14" width="7" height="7" />
+      </svg>
+    ),
+    title: "Real Furniture, Real Prices",
+    desc: "No generic renders. Enso searches real IKEA catalogs using Claude AI to curate actual products that match your taste, fit your dimensions, and stay within your budget.",
+  },
+  {
+    icon: (
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+        <line x1="12" y1="22.08" x2="12" y2="12" />
+      </svg>
+    ),
+    title: "True 3D Placement",
+    desc: "Your floorplan becomes a 3D room via TRELLIS. Every piece of furniture gets its own 3D model, placed by AI in the optimal position — ready to explore from any angle.",
+  },
+];
+
+const SPONSORS = ["Anthropic", "ElevenLabs", "Stripe", "Supabase", "Miro"];
+
+/* ── Glass card shared style ─────────────────────────────────── */
+
+const GLASS = {
+  background: "rgba(255,255,255,0.4)",
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+  border: "1px solid rgba(255,255,255,0.5)",
+  boxShadow: "0 4px 40px rgba(26,26,56,0.04), inset 0 1px 0 rgba(255,255,255,0.6)",
+  borderRadius: "var(--radius-xl)",
+} as const;
+
+const GLASS_HERO = {
+  background: "rgba(255,255,255,0.45)",
+  backdropFilter: "blur(24px)",
+  WebkitBackdropFilter: "blur(24px)",
+  border: "1px solid rgba(255,255,255,0.6)",
+  boxShadow: "0 8px 60px rgba(26,26,56,0.06), inset 0 1px 0 rgba(255,255,255,0.8)",
+  borderRadius: "2rem",
+} as const;
+
+/* ── Page ─────────────────────────────────────────────────────── */
 
 export default function HomePage() {
   const router = useRouter();
@@ -116,288 +250,525 @@ export default function HomePage() {
   }
 
   return (
-    <main
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: "100vh",
-        padding: "2rem",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Brand pill */}
-      <div
-        style={{
-          fontFamily: "var(--font-display), sans-serif",
-          fontSize: "20px",
-          fontWeight: 400,
-          letterSpacing: "0.06em",
-          background: "#1a1a38",
-          color: "#fff",
-          padding: "12px 34px",
-          borderRadius: "var(--radius-full)",
-          marginBottom: "3rem",
-          animation: "fadeUp 0.6s ease-out 0.2s both",
-        }}
-      >
-        HomeDesigner
+    <main style={{ position: "relative", overflow: "hidden" }}>
+      {/* ─── Global decorative gradient blobs ─── */}
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "-20%",
+            right: "-10%",
+            width: "700px",
+            height: "700px",
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(219,80,74,0.08), transparent 70%)",
+            filter: "blur(60px)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: "-15%",
+            left: "-10%",
+            width: "600px",
+            height: "600px",
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(26,26,56,0.05), transparent 70%)",
+            filter: "blur(80px)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "55%",
+            width: "400px",
+            height: "400px",
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(26,26,56,0.04), transparent 70%)",
+            filter: "blur(50px)",
+          }}
+        />
       </div>
 
-      {/* Hero text */}
-      <div
+      {/* ─── HERO ─── */}
+      <section
         style={{
-          textAlign: "center",
-          maxWidth: "640px",
-          animation: "fadeUp 0.6s ease-out 0.4s both",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
           position: "relative",
           zIndex: 1,
+          padding: "2rem",
         }}
       >
+        {/* Enso mark */}
+        <div
+          style={{
+            marginBottom: "1.5rem",
+            color: "#1a1a38",
+            animation: "fadeUp 0.8s ease-out 0.1s both",
+          }}
+        >
+          <EnsoLogo size={100} animate />
+        </div>
+
+        {/* Wordmark */}
         <h1
           style={{
             fontFamily: "var(--font-display), sans-serif",
-            fontSize: "2.5rem",
+            fontSize: "4rem",
             fontWeight: 400,
-            letterSpacing: "0.02em",
-            lineHeight: 1.2,
-            marginBottom: "1.25rem",
+            letterSpacing: "0.08em",
             color: "#1a1a38",
+            marginBottom: "0.75rem",
+            animation: "fadeUp 0.8s ease-out 0.3s both",
           }}
         >
-          Design Your Dream Room with AI
+          Enso
         </h1>
+
+        {/* Tagline */}
         <p
           style={{
-            fontSize: "1.0625rem",
+            fontSize: "1.25rem",
             color: "var(--text-secondary)",
-            lineHeight: 1.75,
-            maxWidth: "480px",
-            margin: "0 auto",
-            letterSpacing: "0.01em",
+            letterSpacing: "0.04em",
+            marginBottom: "1.5rem",
+            animation: "fadeUp 0.8s ease-out 0.5s both",
           }}
         >
-          Voice-powered consultation, intelligent furniture search, 3D visualization, and one-click
-          purchase — all driven by AI agents.
+          your space, complete.
         </p>
-      </div>
 
-      {/* CTA buttons */}
-      <div
+        {/* Description */}
+        <p
+          style={{
+            fontSize: "1rem",
+            color: "var(--muted)",
+            lineHeight: 1.8,
+            textAlign: "center",
+            maxWidth: "460px",
+            marginBottom: "2.5rem",
+            animation: "fadeUp 0.8s ease-out 0.7s both",
+          }}
+        >
+          AI-powered interior design that goes from voice consultation to a fully
+          furnished 3D room — in minutes, not weeks.
+        </p>
+
+        {/* CTA buttons */}
+        <div
+          style={{
+            display: "flex",
+            gap: "1rem",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            animation: "fadeUp 0.8s ease-out 0.9s both",
+          }}
+        >
+          <button
+            className="btn-primary"
+            onClick={() => handleStart("consult")}
+            disabled={loading !== null}
+            type="button"
+          >
+            {loading === "consult" ? "Creating..." : "Begin Consultation"}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => handleStart("design")}
+            disabled={loading !== null}
+            type="button"
+          >
+            {loading === "design" ? "Creating..." : "Upload Floorplan"}
+          </button>
+        </div>
+
+        {/* Scroll indicator */}
+        <div
+          style={{
+            position: "absolute",
+            bottom: "2rem",
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            animation: "fadeUp 0.6s ease-out 1.5s both",
+          }}
+        >
+          <div style={{ animation: "scrollBounce 2s ease-in-out infinite" }}>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="rgba(26,26,56,0.3)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ─── */}
+      <section
         style={{
+          position: "relative",
+          zIndex: 1,
+          padding: "6rem 2rem",
           display: "flex",
-          gap: "1rem",
-          flexWrap: "wrap",
-          justifyContent: "center",
-          marginTop: "2.5rem",
-          animation: "fadeUp 0.6s ease-out 0.6s both",
-          position: "relative",
-          zIndex: 1,
+          flexDirection: "column",
+          alignItems: "center",
         }}
       >
-        <button
-          onClick={() => handleStart("consult")}
-          disabled={loading !== null}
-          type="button"
-          style={{
-            background: "#1a1a38",
-            color: "#fff",
-            padding: "12px 32px",
-            borderRadius: "var(--radius-full)",
-            fontSize: "0.9375rem",
-            fontWeight: 500,
-            letterSpacing: "0.02em",
-            transition: "all var(--transition-slow)",
-            opacity: loading !== null ? 0.6 : 1,
-            transform: loading === "consult" ? "scale(0.98)" : "scale(1)",
-          }}
-        >
-          {loading === "consult" ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-              <span
-                style={{
-                  width: "14px",
-                  height: "14px",
-                  border: "2px solid rgba(255,255,255,0.3)",
-                  borderTopColor: "#fff",
-                  borderRadius: "50%",
-                  animation: "spin 0.6s linear infinite",
-                  display: "inline-block",
-                }}
-              />
-              Creating...
-            </span>
-          ) : (
-            "Start Voice Consultation"
-          )}
-        </button>
-
-        <button
-          onClick={() => handleStart("design")}
-          disabled={loading !== null}
-          type="button"
-          style={{
-            background: "rgba(255,255,255,0.7)",
-            backdropFilter: "blur(8px)",
-            color: "#1a1a38",
-            padding: "12px 32px",
-            borderRadius: "var(--radius-full)",
-            fontSize: "0.9375rem",
-            fontWeight: 500,
-            letterSpacing: "0.02em",
-            border: "1px solid rgba(26,26,56,0.1)",
-            transition: "all var(--transition-slow)",
-            opacity: loading !== null ? 0.6 : 1,
-            transform: loading === "design" ? "scale(0.98)" : "scale(1)",
-          }}
-        >
-          {loading === "design" ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-              <span
-                style={{
-                  width: "14px",
-                  height: "14px",
-                  border: "2px solid rgba(26,26,56,0.2)",
-                  borderTopColor: "#1a1a38",
-                  borderRadius: "50%",
-                  animation: "spin 0.6s linear infinite",
-                  display: "inline-block",
-                }}
-              />
-              Creating...
-            </span>
-          ) : (
-            "Skip to Design"
-          )}
-        </button>
-      </div>
-
-      {/* Feature cards — glassmorphism */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: "1rem",
-          maxWidth: "900px",
-          width: "100%",
-          marginTop: "4rem",
-          animation: "fadeUp 0.6s ease-out 0.8s both",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        {FEATURES.map((f, i) => (
-          <div
-            key={f.title}
+        <FadeIn>
+          <h2
             style={{
-              padding: "1.5rem 1.25rem",
-              borderRadius: "var(--radius-xl)",
-              background: "rgba(255,255,255,0.95)",
-              backdropFilter: "blur(20px)",
-              boxShadow: "var(--shadow-lg)",
-              transition: "all var(--transition-slow)",
-              animation: `fadeUp 0.6s ease-out ${0.9 + i * 0.1}s both`,
+              fontFamily: "var(--font-display), sans-serif",
+              fontSize: "2rem",
+              fontWeight: 400,
+              letterSpacing: "0.04em",
+              color: "#1a1a38",
+              marginBottom: "0.75rem",
+              textAlign: "center",
             }}
           >
-            <div
-              style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "var(--radius-full)",
-                background: "rgba(26,26,56,0.05)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#1a1a38",
-                marginBottom: "0.875rem",
-              }}
-            >
-              {f.icon}
-            </div>
-            <div
-              style={{
-                fontSize: "0.875rem",
-                fontWeight: 600,
-                marginBottom: "0.375rem",
-                letterSpacing: "0.01em",
-              }}
-            >
-              {f.title}
-            </div>
-            <div style={{ fontSize: "0.8125rem", color: "var(--muted)", lineHeight: 1.65 }}>
-              {f.desc}
-            </div>
-          </div>
-        ))}
-      </div>
+            From conversation to furnished room
+          </h2>
+          <p
+            style={{
+              fontSize: "0.9375rem",
+              color: "var(--muted)",
+              textAlign: "center",
+              marginBottom: "3rem",
+            }}
+          >
+            Four steps. Zero complexity.
+          </p>
+        </FadeIn>
 
-      {/* Sponsor badges */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "2rem",
-          marginTop: "4rem",
-          animation: "fadeUp 0.6s ease-out 1.4s both",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <span
+        <div
           style={{
-            fontSize: "0.6875rem",
-            color: "var(--muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 500,
+            display: "flex",
+            gap: "1.25rem",
+            maxWidth: "920px",
+            width: "100%",
+            flexWrap: "wrap",
+            justifyContent: "center",
           }}
         >
-          Powered by
-        </span>
-        <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", justifyContent: "center" }}>
-          {SPONSORS.map((s) => (
-            <div
-              key={s.name}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "0.125rem",
-              }}
+          {STEPS.map((step, i) => (
+            <FadeIn
+              key={step.num}
+              delay={0.1 * i}
+              style={{ flex: "1 1 180px", maxWidth: "220px" }}
             >
-              <span
+              <div
                 style={{
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  color: "var(--text)",
-                  opacity: 0.7,
+                  ...GLASS,
+                  padding: "1.75rem 1.25rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  textAlign: "center",
+                  height: "100%",
                 }}
               >
-                {s.name}
-              </span>
-              <span style={{ fontSize: "0.6875rem", color: "var(--muted)" }}>{s.label}</span>
-            </div>
+                <span
+                  style={{
+                    fontSize: "0.625rem",
+                    fontWeight: 600,
+                    color: "#db504a",
+                    letterSpacing: "0.15em",
+                    textTransform: "uppercase",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  {step.num}
+                </span>
+                <div
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "var(--radius-full)",
+                    background: "rgba(219,80,74,0.06)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#1a1a38",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  {step.icon}
+                </div>
+                <div
+                  style={{
+                    fontSize: "0.9375rem",
+                    fontWeight: 600,
+                    color: "#1a1a38",
+                    letterSpacing: "0.01em",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  {step.label}
+                </div>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    color: "var(--muted)",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {step.desc}
+                </div>
+              </div>
+            </FadeIn>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Subtle tagline at bottom */}
-      <div
+      {/* ─── FEATURES ─── */}
+      <section
         style={{
-          position: "fixed",
-          bottom: "32px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          fontSize: "0.6875rem",
-          color: "var(--muted)",
-          letterSpacing: "0.04em",
-          animation: "fadeUp 0.6s ease-out 1.8s both",
+          position: "relative",
+          zIndex: 1,
+          padding: "4rem 2rem 6rem",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
         }}
       >
-        HackEurope 2026 — Agentic AI Track
-      </div>
+        <FadeIn>
+          <h2
+            style={{
+              fontFamily: "var(--font-display), sans-serif",
+              fontSize: "2rem",
+              fontWeight: 400,
+              letterSpacing: "0.04em",
+              color: "#1a1a38",
+              marginBottom: "0.75rem",
+              textAlign: "center",
+            }}
+          >
+            What makes Enso different
+          </h2>
+          <p
+            style={{
+              fontSize: "0.9375rem",
+              color: "var(--muted)",
+              textAlign: "center",
+              marginBottom: "3rem",
+            }}
+          >
+            Not a mockup tool. A complete design agent.
+          </p>
+        </FadeIn>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "1.5rem",
+            maxWidth: "960px",
+            width: "100%",
+            flexWrap: "wrap",
+            justifyContent: "center",
+          }}
+        >
+          {FEATURES.map((f, i) => {
+            const iconBg = [
+              "rgba(219,80,74,0.08)",
+              "rgba(219,80,74,0.06)",
+              "rgba(26,26,56,0.05)",
+            ][i % 3];
+            return (
+            <FadeIn
+              key={f.title}
+              delay={0.1 * i}
+              style={{ flex: "1 1 260px", maxWidth: "300px" }}
+            >
+              <div
+                className="card-hover"
+                style={{
+                  ...GLASS,
+                  padding: "2rem 1.5rem",
+                  height: "100%",
+                }}
+              >
+                <div
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "var(--radius-full)",
+                    background: iconBg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#1a1a38",
+                    marginBottom: "1.25rem",
+                  }}
+                >
+                  {f.icon}
+                </div>
+                <div
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: 600,
+                    color: "#1a1a38",
+                    letterSpacing: "0.01em",
+                    marginBottom: "0.625rem",
+                  }}
+                >
+                  {f.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: "0.8125rem",
+                    color: "var(--muted)",
+                    lineHeight: 1.8,
+                  }}
+                >
+                  {f.desc}
+                </div>
+              </div>
+            </FadeIn>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ─── FINAL CTA + FOOTER ─── */}
+      <section
+        style={{
+          position: "relative",
+          zIndex: 1,
+          padding: "4rem 2rem 3rem",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <FadeIn style={{ maxWidth: "500px", width: "100%" }}>
+          <div
+            style={{
+              ...GLASS_HERO,
+              padding: "3rem 4rem",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+            }}
+          >
+            <EnsoLogo size={40} color="#1a1a38" />
+            <h3
+              style={{
+                fontFamily: "var(--font-display), sans-serif",
+                fontSize: "1.5rem",
+                fontWeight: 400,
+                letterSpacing: "0.04em",
+                color: "#1a1a38",
+                margin: "1.25rem 0 0.75rem",
+              }}
+            >
+              Ready to design your space?
+            </h3>
+            <p
+              style={{
+                fontSize: "0.875rem",
+                color: "var(--muted)",
+                marginBottom: "2rem",
+                lineHeight: 1.7,
+              }}
+            >
+              Start with a voice consultation or upload your floorplan directly.
+            </p>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.875rem",
+                flexWrap: "wrap",
+                justifyContent: "center",
+              }}
+            >
+              <button
+                className="btn-primary"
+                onClick={() => handleStart("consult")}
+                disabled={loading !== null}
+                type="button"
+              >
+                {loading === "consult" ? "Creating..." : "Get Started"}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => handleStart("design")}
+                disabled={loading !== null}
+                type="button"
+              >
+                {loading === "design" ? "Creating..." : "Upload Floorplan"}
+              </button>
+            </div>
+          </div>
+        </FadeIn>
+
+        {/* Sponsors */}
+        <FadeIn delay={0.2}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "1.5rem",
+              marginTop: "4rem",
+              flexWrap: "wrap",
+              justifyContent: "center",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "0.625rem",
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                fontWeight: 500,
+              }}
+            >
+              Powered by
+            </span>
+            {SPONSORS.map((s) => (
+              <span
+                key={s}
+                className="sponsor-badge"
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  color: "#1a1a38",
+                  letterSpacing: "0.01em",
+                }}
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        </FadeIn>
+
+        {/* Footer */}
+        <div
+          style={{
+            marginTop: "3rem",
+            marginBottom: "1rem",
+            fontSize: "0.625rem",
+            color: "var(--muted)",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
+        >
+          HackEurope 2026
+        </div>
+      </section>
     </main>
   );
 }
