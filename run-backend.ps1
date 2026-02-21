@@ -17,18 +17,32 @@ if (-not (Test-Path $python)) {
   exit 1
 }
 
-# Kill anything already on this port (stale server from a previous run)
-$existing = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
-if ($existing) {
-  $existing.OwningProcess | Select-Object -Unique | ForEach-Object {
-    Write-Host "Killing stale process on port $Port (PID $_)"
-    Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+# Clear __pycache__ directories — OneDrive corrupts file timestamps which causes
+# Python to load stale .pyc bytecode even when source files have changed
+Write-Host "Clearing __pycache__ to avoid stale bytecode..."
+Get-ChildItem -Path $repoRoot -Filter "__pycache__" -Recurse -ErrorAction SilentlyContinue |
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
+# Kill ALL python.exe processes — uvicorn --reload spawns child processes that
+# inherit the socket, so killing by port alone misses them. On this dev machine
+# only our server uses Python, so this is safe.
+Write-Host "Killing all Python processes to clear stale servers..."
+Get-Process -Name python,pythonw -ErrorAction SilentlyContinue |
+  Stop-Process -Force -ErrorAction SilentlyContinue
+
+# Also kill any remaining holder of the specific port
+$conns = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+if ($conns) {
+  $stalePids = $conns.OwningProcess | Sort-Object -Unique
+  foreach ($stalePid in $stalePids) {
+    Write-Host "Killing stale process PID $stalePid on port $Port"
+    Stop-Process -Id $stalePid -Force -ErrorAction SilentlyContinue
   }
-  Start-Sleep 2
 }
+Start-Sleep 3
 
 $env:PYTHONIOENCODING = "utf-8"
-# Store .pyc cache outside OneDrive — prevents timestamp corruption from sync
-$env:PYTHONPYCACHEPREFIX = "$env:TEMP\homedesigner-pycache"
+# Use a fresh unique cache dir each start — guarantees Python always reads source files
+$env:PYTHONPYCACHEPREFIX = "$env:TEMP\hd-pycache-$(Get-Date -Format 'yyyyMMddHHmmss')"
 
 & $python -m uvicorn backend.src.main:app --reload --host 127.0.0.1 --port $Port
