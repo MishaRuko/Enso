@@ -5,8 +5,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env from backend/src directory
-load_dotenv(Path(__file__).parent / ".env")
+# Load .env from backend directory (one level up from src/)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # --- API Keys ---
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")

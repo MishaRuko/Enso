@@ -97,6 +97,20 @@ class PlacementResult(BaseModel):
     placements: list[FurniturePlacement]
 
 
+# --- Zone-based placement ---
+
+
+class FurnitureZone(BaseModel):
+    name: str
+    polygon: list[list[float]]  # [[x,z], ...] apartment-absolute metres
+    furniture_ids: list[str]
+    description: str = ""
+
+
+class ZoneDecomposition(BaseModel):
+    zones: list[FurnitureZone]
+
+
 # --- Pipeline ---
 
 

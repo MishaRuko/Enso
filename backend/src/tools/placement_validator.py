@@ -69,23 +69,29 @@ def validate_placements(
     errors: list[str] = []
     bounds_list: list[tuple[str, tuple[float, float, float, float]]] = []
 
+    # Apartment-absolute room bounds
+    x_min = room.x_offset_m
+    x_max = room.x_offset_m + room.width_m
+    z_min = room.z_offset_m
+    z_max = room.z_offset_m + room.length_m
+
     for p in placements:
         dims = furniture_dims.get(p.item_id)
         bbox = _item_bounds(p, dims)
         bounds_list.append((p.item_id, bbox))
 
-        # --- 1. Room bounds check ---
-        if bbox[0] < -0.01 or bbox[1] < -0.01:
+        # --- 1. Room bounds check (apartment-absolute) ---
+        if bbox[0] < x_min - 0.01 or bbox[1] < z_min - 0.01:
             errors.append(
-                f"{p.name} (id={p.item_id}) extends outside room (negative coords)."
+                f"{p.name} (id={p.item_id}) extends outside room (before origin)."
             )
-        if bbox[2] > room.width_m + 0.01:
+        if bbox[2] > x_max + 0.01:
             errors.append(
-                f"{p.name} (id={p.item_id}) extends past room width ({room.width_m}m)."
+                f"{p.name} (id={p.item_id}) extends past room width ({x_max}m)."
             )
-        if bbox[3] > room.length_m + 0.01:
+        if bbox[3] > z_max + 0.01:
             errors.append(
-                f"{p.name} (id={p.item_id}) extends past room length ({room.length_m}m)."
+                f"{p.name} (id={p.item_id}) extends past room length ({z_max}m)."
             )
 
     # --- 2. Overlap / walkway check ---
@@ -130,37 +136,40 @@ def validate_placements(
 def _door_zone(
     door, room: RoomData
 ) -> tuple[float, float, float, float]:
-    """Return the rectangular keep-clear zone in front of a door."""
+    """Return the rectangular keep-clear zone in front of a door (apartment-absolute)."""
     wall = door.wall.lower()
+    x0 = room.x_offset_m
+    z0 = room.z_offset_m
     pos = door.position_m
     w = door.width_m
 
     if wall == "south":
-        return (pos, 0, pos + w, DOOR_CLEARANCE_M)
+        return (x0 + pos, z0, x0 + pos + w, z0 + DOOR_CLEARANCE_M)
     elif wall == "north":
-        return (pos, room.length_m - DOOR_CLEARANCE_M, pos + w, room.length_m)
+        return (x0 + pos, z0 + room.length_m - DOOR_CLEARANCE_M, x0 + pos + w, z0 + room.length_m)
     elif wall == "west":
-        return (0, pos, DOOR_CLEARANCE_M, pos + w)
+        return (x0, z0 + pos, x0 + DOOR_CLEARANCE_M, z0 + pos + w)
     elif wall == "east":
-        return (room.width_m - DOOR_CLEARANCE_M, pos, room.width_m, pos + w)
-    # Fallback — no zone
+        return (x0 + room.width_m - DOOR_CLEARANCE_M, z0 + pos, x0 + room.width_m, z0 + pos + w)
     return (0, 0, 0, 0)
 
 
 def _window_zone(
     window, room: RoomData
 ) -> tuple[float, float, float, float]:
-    """Return the rectangular keep-clear zone in front of a window."""
+    """Return the rectangular keep-clear zone in front of a window (apartment-absolute)."""
     wall = window.wall.lower()
+    x0 = room.x_offset_m
+    z0 = room.z_offset_m
     pos = window.position_m
     w = window.width_m
 
     if wall == "south":
-        return (pos, 0, pos + w, WINDOW_CLEARANCE_M)
+        return (x0 + pos, z0, x0 + pos + w, z0 + WINDOW_CLEARANCE_M)
     elif wall == "north":
-        return (pos, room.length_m - WINDOW_CLEARANCE_M, pos + w, room.length_m)
+        return (x0 + pos, z0 + room.length_m - WINDOW_CLEARANCE_M, x0 + pos + w, z0 + room.length_m)
     elif wall == "west":
-        return (0, pos, WINDOW_CLEARANCE_M, pos + w)
+        return (x0, z0 + pos, x0 + WINDOW_CLEARANCE_M, z0 + pos + w)
     elif wall == "east":
-        return (room.width_m - WINDOW_CLEARANCE_M, pos, room.width_m, pos + w)
+        return (x0 + room.width_m - WINDOW_CLEARANCE_M, z0 + pos, x0 + room.width_m, z0 + pos + w)
     return (0, 0, 0, 0)

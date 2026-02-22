@@ -28,6 +28,14 @@ def placement_prompt(
                 "depth": f.dimensions.depth_cm,
                 "height": f.dimensions.height_cm,
             }
+            entry["dimensions_m"] = {
+                "width": round(f.dimensions.width_cm / 100, 3),
+                "depth": round(f.dimensions.depth_cm / 100, 3),
+                "height": round(f.dimensions.height_cm / 100, 3),
+            }
+            entry["footprint_m"] = (
+                f"{entry['dimensions_m']['width']}m x {entry['dimensions_m']['depth']}m"
+            )
         furniture_list.append(entry)
 
     room_json = {
@@ -75,6 +83,16 @@ def placement_prompt(
 
     return f"""\
 You are an expert interior designer and spatial planner. Place the furniture items in the room according to best design practices.
+
+## Attached Images (in order)
+The images show the EMPTY room before furniture placement:
+1. **Original floorplan** — the architectural floor plan
+2. **Top-Down 3D View** — overhead parallel projection of the empty room
+3. **South-West 3D View** — perspective view from the south-west corner
+4. **South-East 3D View** — perspective view from the south-east corner
+5. **North-East 3D View** — perspective view from the north-east corner
+6. **2D Room Diagram** — labeled top-down floor plan with doors and windows
+Use these to understand the room layout, door/window positions, and available floor space.
 
 ## Room
 ```json
