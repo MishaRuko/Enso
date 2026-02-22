@@ -13,9 +13,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+import re as _re
+
 from . import db
+<<<<<<< Updated upstream
 from .models.schemas import PlacementResult, UserPreferences
 from .routes import session, tools, voice, voice_intake
+=======
+from .models.schemas import UserPreferences
+>>>>>>> Stashed changes
 from .tools.miro_mcp import generate_vision_board_with_miro_ai
 from .workflow.floorplan import process_floorplan
 from .workflow.pipeline import run_full_pipeline
@@ -159,6 +165,71 @@ async def get_session(session_id: str):
         session["furniture_list"] = furniture_list
 
     return session
+
+
+def _extract_board_id(url: str) -> str:
+    match = _re.search(r'/board/([^/?]+)', url)
+    return match.group(1) if match else ""
+
+
+def _preferences_to_brief(prefs: dict) -> dict:
+    style = prefs.get("style", "")
+    return {
+        "budget": prefs.get("budget_max"),
+        "currency": prefs.get("currency", "EUR"),
+        "style": ([style] if isinstance(style, str) and style else style if isinstance(style, list) else []),
+        "avoid": prefs.get("dealbreakers", []),
+        "rooms_priority": [prefs["room_type"]] if prefs.get("room_type") else [],
+        "must_haves": prefs.get("must_haves", []),
+        "existing_items": prefs.get("existing_furniture", []),
+        "constraints": [],
+        "vibe_words": prefs.get("colors", []),
+        "reference_images": [],
+        "notes": "",
+    }
+
+
+class PatchSessionRequest(BaseModel):
+    preferences: dict | None = None
+    status: str | None = None
+
+
+@app.patch("/api/sessions/{session_id}")
+async def patch_session(session_id: str, body: PatchSessionRequest):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    updates: dict = {}
+    if body.preferences is not None:
+        updates["preferences"] = body.preferences
+    if body.status is not None:
+        updates["status"] = body.status
+    if updates:
+        session = db.update_session(session_id, updates)
+    return session
+
+
+@app.post("/api/sessions/{session_id}/miro")
+async def create_miro_board(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    existing_url = session.get("miro_board_url")
+    if existing_url:
+        return {"miro_board_url": existing_url, "board_id": _extract_board_id(existing_url), "status": "ready"}
+    preferences = session.get("preferences") or {}
+    brief = _preferences_to_brief(preferences)
+
+    async def _run_miro():
+        try:
+            result = await asyncio.to_thread(generate_vision_board_with_miro_ai, brief)
+            db.update_session(session_id, {"miro_board_url": result.url})
+            logging.getLogger("miro_task").info("Board ready for %s: %s", session_id, result.url)
+        except Exception:
+            logging.getLogger("miro_task").exception("Miro board creation failed for %s", session_id)
+
+    asyncio.create_task(_run_miro())
+    return {"status": "pending", "miro_board_url": None, "board_id": None}
 
 
 @app.post("/api/sessions/{session_id}/preferences")
