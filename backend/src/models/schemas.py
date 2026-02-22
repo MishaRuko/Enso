@@ -169,11 +169,18 @@ class Position3D(BaseModel):
 
 
 class FurniturePlacement(BaseModel):
+    model_config = {"extra": "allow"}
     item_id: str
     name: str
     position: Position3D
     rotation_y_degrees: float = 0
     reasoning: str = ""
+    room_name: str = ""
+    glb_url: str = ""
+    image_url: str = ""
+    buy_url: str = ""
+    price: float | None = None
+    currency: str = ""
 
 
 class PlacementResult(BaseModel):

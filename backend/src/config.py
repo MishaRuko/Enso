@@ -18,6 +18,7 @@ MIRO_MCP_ENABLED = os.getenv("MIRO_MCP_ENABLED", "true").lower() == "true"
 MIRO_MCP_PACKAGE = os.getenv("MIRO_MCP_PACKAGE", "@evalstate/mcp-miro")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+SKETCHFAB_API_TOKEN = os.getenv("SKETCHFAB_API_TOKEN", "")
 
 # --- OpenRouter Models ---
 CLAUDE_MODEL = "anthropic/claude-opus-4.6"
@@ -43,7 +44,7 @@ SUPABASE_ANON_KEY = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 # --- Backend ---
-BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+BACKEND_PUBLIC_URL = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8100")
 
 # --- ElevenLabs ---
 ELEVENLABS_AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID", "")

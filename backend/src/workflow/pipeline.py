@@ -78,14 +78,20 @@ async def run_full_pipeline(session_id: str) -> None:
         try:
             await place_furniture(session_id, placement_job["id"])
         except Exception:
-            logger.exception("Session %s: placement failed (non-fatal)", session_id)
+            logger.exception("Session %s: placement failed", session_id)
+            duration_ms = (time.time() - t0) * 1000
+            trace.append(_trace_event(
+                "placing_failed", "Placement crashed", duration_ms=round(duration_ms),
+            ))
+            db.update_session(session_id, {"status": "placing_failed"})
+            db.update_job(job_id, {"status": "failed", "trace": trace})
+            return
         duration_ms = (time.time() - t0) * 1000
 
         trace.append(_trace_event(
             "placing", "Placement complete", duration_ms=round(duration_ms),
         ))
 
-        # 3. Done — only mark complete if placement actually saved results
         session_check = db.get_session(session_id)
         has_placements = bool(
             session_check

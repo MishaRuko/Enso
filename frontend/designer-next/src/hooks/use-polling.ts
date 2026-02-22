@@ -16,6 +16,9 @@ const TERMINAL_STATUSES = new Set([
   "placing_failed",
   "placement_failed",
   "placement_ready",
+  "furniture_found",
+  "checkout",
+  "consulting",
 ]);
 
 export function usePolling(sessionId: string) {

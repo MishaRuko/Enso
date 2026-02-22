@@ -10,6 +10,7 @@ import MoodBoard from "@/components/mood-board";
 import MiroEmbed from "@/components/miro-embed";
 import type { MoodBoardItem } from "@/components/mood-board";
 import PreferenceTags from "@/components/preference-tags";
+import { EnsoLogo } from "@/components/enso-logo";
 import type { UserPreferences } from "@/lib/types";
 
 const AGENT_ID = process.env.NEXT_PUBLIC_ELEVENLABS_AGENT_ID ?? "";
@@ -92,7 +93,31 @@ export default function ConsultationPage() {
       <main
         style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
       >
-        <section style={{ flex: 1, overflow: "auto", padding: "1.5rem 2rem" }}>
+        <a
+          href="/"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "1rem 2rem",
+            textDecoration: "none",
+            flexShrink: 0,
+          }}
+        >
+          <EnsoLogo size={24} color="var(--text)" />
+          <span
+            style={{
+              fontFamily: "var(--font-display), sans-serif",
+              fontSize: "1rem",
+              fontWeight: 400,
+              letterSpacing: "0.04em",
+              color: "var(--text)",
+            }}
+          >
+            enso
+          </span>
+        </a>
+        <section style={{ flex: 1, overflow: "auto", padding: "0 2rem 1.5rem" }}>
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <div style={{ marginBottom: "2rem" }}>
               <div
@@ -163,10 +188,38 @@ export default function ConsultationPage() {
       style={{
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
+        gridTemplateRows: "auto 1fr",
         height: "100vh",
         overflow: "hidden",
       }}
     >
+      {/* Logo header spanning full width */}
+      <a
+        href="/"
+        style={{
+          gridColumn: "1 / -1",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          padding: "1rem 2rem",
+          textDecoration: "none",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <EnsoLogo size={24} color="var(--text)" />
+        <span
+          style={{
+            fontFamily: "var(--font-display), sans-serif",
+            fontSize: "1rem",
+            fontWeight: 400,
+            letterSpacing: "0.04em",
+            color: "var(--text)",
+          }}
+        >
+          enso
+        </span>
+      </a>
+
       {/* Left: Voice Agent */}
       <section
         style={{
@@ -349,7 +402,7 @@ export default function ConsultationPage() {
               height="16"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="var(--gradient-mid)"
+              stroke="var(--accent)"
               strokeWidth="2"
               strokeLinecap="round"
             >
@@ -372,7 +425,7 @@ export default function ConsultationPage() {
                   padding: "0.125rem 0.5rem",
                   borderRadius: "var(--radius-full)",
                   background: "rgba(139,92,246,0.1)",
-                  color: "var(--gradient-mid)",
+                  color: "var(--accent)",
                 }}
               >
                 {Object.keys(preferences).length}

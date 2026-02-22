@@ -12,6 +12,7 @@ from ..config import OPENROUTER_API_KEY
 logger = logging.getLogger(__name__)
 
 _MODEL = "google/gemini-3-pro-image-preview"
+_NANO_BANANA_MODEL = _MODEL
 
 
 def _extract_image_from_response(resp) -> str | None:

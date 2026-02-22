@@ -428,8 +428,7 @@ const SLIDES: Slide[] = [
                 layer: "Intelligence",
                 items: [
                   "Claude Opus 4.6 \u2014 planning & reasoning",
-                  "Gemini 3 Flash \u2014 spatial placement",
-                  "Gemini 3 Pro \u2014 vision & image analysis",
+                  "Gemini 3.1 Pro \u2014 floorplan analysis & spatial placement",
                   "ElevenLabs \u2014 voice consultation agent",
                 ],
               },
@@ -588,8 +587,9 @@ const SLIDES: Slide[] = [
           </h2>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
               gap: "0.75rem",
             }}
           >
@@ -609,6 +609,7 @@ const SLIDES: Slide[] = [
               <div
                 key={c.name}
                 style={{
+                  width: "220px",
                   background: "rgba(236,230,219,0.2)",
                   border: "1px solid rgba(236,230,219,0.5)",
                   borderRadius: "1rem",
@@ -788,6 +789,38 @@ export default function DeckPage() {
         cursor: "none",
       }}
     >
+      {/* Logo home link */}
+      <a
+        href="/"
+        style={{
+          position: "fixed",
+          top: "1.5rem",
+          left: "1.5rem",
+          zIndex: 100,
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          textDecoration: "none",
+          cursor: "pointer",
+        }}
+      >
+        <EnsoLogo
+          size={28}
+          color={slide.bg === NAVY || slide.bg === CHARCOAL ? "rgba(255,255,255,0.7)" : CHARCOAL}
+        />
+        <span
+          style={{
+            fontFamily: "var(--font-display), sans-serif",
+            fontSize: "1.125rem",
+            fontWeight: 400,
+            letterSpacing: "0.04em",
+            color: slide.bg === NAVY || slide.bg === CHARCOAL ? "rgba(255,255,255,0.7)" : CHARCOAL,
+          }}
+        >
+          enso
+        </span>
+      </a>
+
       {/* Slide content */}
       <div
         key={current}
@@ -821,13 +854,13 @@ export default function DeckPage() {
               borderRadius: "100px",
               border: "none",
               background:
-                slide.bg === WHITE || slide.bg === "#faf9f7"
+                slide.bg === NAVY || slide.bg === CHARCOAL
                   ? i === current
-                    ? VERMILLION
-                    : "rgba(26,26,56,0.15)"
-                  : i === current
                     ? "rgba(255,255,255,0.9)"
-                    : "rgba(255,255,255,0.2)",
+                    : "rgba(255,255,255,0.2)"
+                  : i === current
+                    ? VERMILLION
+                    : "rgba(26,26,56,0.15)",
               cursor: "pointer",
               transition: "all 0.3s ease",
               padding: 0,
@@ -846,9 +879,9 @@ export default function DeckPage() {
           fontSize: "0.6875rem",
           letterSpacing: "0.08em",
           color:
-            slide.bg === WHITE || slide.bg === "#faf9f7"
-              ? "rgba(26,26,56,0.3)"
-              : "rgba(255,255,255,0.3)",
+            slide.bg === NAVY || slide.bg === CHARCOAL
+              ? "rgba(255,255,255,0.3)"
+              : "rgba(26,26,56,0.3)",
           zIndex: 100,
           fontVariantNumeric: "tabular-nums",
         }}
