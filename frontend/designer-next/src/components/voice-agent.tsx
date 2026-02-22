@@ -41,7 +41,20 @@ export default function VoiceAgent({ agentId, sessionId, onComplete }: VoiceAgen
     setError(null);
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
-      await conversation.startSession({ agentId, connectionType: "webrtc" });
+      await conversation.startSession({
+        agentId,
+        connectionType: "webrtc",
+        clientTools: {
+          set_room_type: () => "ok",
+          update_preference: () => "ok",
+          create_vision_board: () => "ok",
+          add_to_mood_board: () => "ok",
+          complete_consultation: () => {
+            handleStop();
+            return "ok";
+          },
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start conversation");
     }
