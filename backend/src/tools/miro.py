@@ -425,7 +425,7 @@ def _populate_template_board(
         target_h  = round(target_w * orig_h / orig_w)
 
         logger.info(
-            "Slot %d: diamond @ (%.0f, %.0f) %dpx → %s",
+            "Slot %d: diamond @ (%.0f, %.0f) %dpx -> %s",
             i, cx, cy, target_w, img_url.split("/")[-1][:30],
         )
         ok = _place_image_at(client, board_id, auth_token, img_url, cx, cy, target_w, target_h)
@@ -798,7 +798,7 @@ def _add_vision_images(client: httpx.Client, headers: dict, board_id: str, brief
         ok = _upload_image_binary(client, board_id, auth_token, img_url, width, x, y, orig_w, orig_h)
         if ok:
             placed += 1
-            logger.info("Image %2d → slot %2d  (%dpx at %d, %d)", placed, placed - 1, width, x, y)
+            logger.info("Image %2d -> slot %2d  (%dpx at %d, %d)", placed, placed - 1, width, x, y)
 
     logger.info("Vision images placed: %d / %d", placed, len(images))
 

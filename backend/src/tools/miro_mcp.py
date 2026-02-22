@@ -19,6 +19,7 @@ Tiers:
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass
 
@@ -35,25 +36,32 @@ _AGENT_MODEL   = "anthropic/claude-sonnet-4-6"
 _MAX_TURNS     = 25  # hard cap per pass
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Hardcoded grid — positions injected at placement time, not decided by the AI
+# Dynamic square grid — computed from photo count at placement time
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Image slots: (x, y) = board centre coordinates; width in px; rotation in °
-# Arranged in a 3-column grid. At 3:2 aspect ratio, each image height ≈ width * 0.67.
-# hero (440px) → h≈293  medium (300px) → h≈200  small (180px) → h≈120
-# Column centres: left=-560, centre=0, right=+560
-# Row centres:    top=-320, middle=0, bottom=+340
-_GRID_SLOTS: dict[str, dict] = {
-    "hero":     {"x":    0, "y":    0, "width": 440, "rotation": 0},   # centre, middle
-    "medium_1": {"x":  560, "y": -220, "width": 300, "rotation": 0},   # right, upper
-    "medium_2": {"x":  560, "y":  220, "width": 300, "rotation": 0},   # right, lower
-    "medium_3": {"x": -560, "y": -220, "width": 300, "rotation": 0},   # left, upper
-    "medium_4": {"x": -560, "y":  220, "width": 300, "rotation": 0},   # left, lower
-    "small_1":  {"x":  190, "y": -360, "width": 200, "rotation": 0},   # centre-right, top
-    "small_2":  {"x":  850, "y":    0, "width": 170, "rotation": 0},   # far right, middle
-    "small_3":  {"x": -190, "y":  360, "width": 200, "rotation": 0},   # centre-left, bottom
-    "small_4":  {"x": -850, "y":    0, "width": 170, "rotation": 0},   # far left, middle
-}
+def _compute_grid(n: int, gap: int = 10) -> list[dict]:
+    """
+    Compute centred square-grid cell positions for n images.
+    Grid width is capped at 1600px (fits between sticky columns at x=±1100).
+    All cells are the same size with 3:2 landscape aspect ratio.
+    Minimum gap between images: 10px on all sides.
+    Returns list of {x, y, width, height} dicts (board centre coordinates).
+    """
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+    max_w = 1600
+    img_w = round((max_w - (cols + 1) * gap) / cols)
+    img_h = round(img_w * 2 / 3)
+    total_w = cols * img_w + (cols + 1) * gap
+    total_h = rows * img_h + (rows + 1) * gap
+    positions = []
+    for i in range(n):
+        col = i % cols
+        row = i // cols
+        x = -total_w / 2 + gap + col * (img_w + gap) + img_w / 2
+        y = -total_h / 2 + gap + row * (img_h + gap) + img_h / 2
+        positions.append({"x": round(x), "y": round(y), "width": img_w, "height": img_h})
+    return positions
 
 # Sticky slots: fixed position and colour per brief field label
 _STICKY_SLOTS: dict[str, dict] = {
@@ -144,25 +152,19 @@ _PASS1_TOOLS: list[dict] = [
                     "images": {
                         "type": "array",
                         "description": (
-                            "Exactly 9 image slots, one per fixed slot_id. "
-                            "Allowed slot_ids: hero, medium_1, medium_2, medium_3, medium_4, "
-                            "small_1, small_2, small_3, small_4. No duplicate photo_id allowed."
+                            "Exactly 9 photos (no duplicate photo_id). "
+                            "Order them from most to least impactful — "
+                            "the system places them left-to-right, top-to-bottom in a square grid."
                         ),
                         "items": {
                             "type": "object",
                             "properties": {
-                                "slot_id":  {
-                                    "type": "string",
-                                    "description": "One of: hero, medium_1, medium_2, medium_3, medium_4, small_1, small_2, small_3, small_4",
-                                    "enum": ["hero", "medium_1", "medium_2", "medium_3", "medium_4",
-                                             "small_1", "small_2", "small_3", "small_4"],
-                                },
                                 "photo_id": {"type": "integer", "description": "Pexels photo id (dedup key)"},
                                 "url":      {"type": "string",  "description": "Pexels ?w=940 image URL"},
                                 "orig_w":   {"type": "integer", "description": "Original pixel width from search result"},
                                 "orig_h":   {"type": "integer", "description": "Original pixel height from search result"},
                             },
-                            "required": ["slot_id", "photo_id", "url", "orig_w", "orig_h"],
+                            "required": ["photo_id", "url", "orig_w", "orig_h"],
                         },
                     },
                     "stickies": {
@@ -431,7 +433,7 @@ def _llm(system: str, messages: list[dict], tools: list[dict]) -> dict:
 _PASS1_SYSTEM = """\
 You are an expert interior design AI curating photos for a Miro vision board.
 
-The board layout (positions, sizes, rotations) is handled entirely by the system.
+The board layout (grid positions, sizes) is handled entirely by the system.
 Your only job is to select the right photos and write the text content.
 
 WORKFLOW — follow every step exactly:
@@ -442,17 +444,18 @@ WORKFLOW — follow every step exactly:
    textures/materials, colour palette, lifestyle/mood.
    Collect 15–20 candidate photos total.
 
-2. SELECT — choose exactly 9 photos (no duplicate photo_id) and assign each to
-   one of the 9 fixed slot IDs. Pick the most impactful photo for each slot:
-   • hero     — your single best full-room shot; anchors the board
-   • medium_1 — second strongest room or furniture photo
-   • medium_2 — third strongest; complements hero
-   • medium_3 — fourth; different angle or texture focus
-   • medium_4 — fifth; colour palette or material emphasis
-   • small_1  — accent detail, close-up, or lifestyle shot
-   • small_2  — texture or material detail
-   • small_3  — another detail or complementary mood shot
-   • small_4  — final accent; may repeat a theme with a different photo
+2. SELECT — choose exactly 9 photos (no duplicate photo_id).
+   Order them from most to least impactful — the system places them
+   left-to-right, top-to-bottom in a 3×3 square grid:
+   • Position 1 (top-left)    — your best full-room shot
+   • Position 2 (top-centre)  — second strongest room or furniture photo
+   • Position 3 (top-right)   — third strongest; complements position 1
+   • Position 4 (middle-left) — different angle or texture focus
+   • Position 5 (centre)      — colour palette or material emphasis
+   • Position 6 (middle-right)— accent detail or lifestyle shot
+   • Position 7 (bottom-left) — texture or material detail
+   • Position 8 (bottom-centre)— complementary mood shot
+   • Position 9 (bottom-right) — final accent with a different photo
 
 3. STICKIES — write the text value for each of the 8 sticky note labels.
    Use only these exact labels (system handles position and colour):
@@ -463,8 +466,7 @@ WORKFLOW — follow every step exactly:
    After the call, output nothing else.
 
 RULES:
-• Never duplicate a photo_id across image slots.
-• Use all 9 slot IDs exactly as listed above — no custom slot names.
+• Never duplicate a photo_id.
 • Do NOT provide x, y, width, rotation, or color — those are set by the system.
 • Do NOT call submit_layout_plan more than once.
 """
@@ -542,7 +544,7 @@ def _pass1_generate_plan(brief: dict) -> dict | None:
         for tc in msg["tool_calls"]:
             fn_name = tc["function"]["name"]
             fn_args = json.loads(tc["function"]["arguments"])
-            logger.info("Pass1 → %s(%s)", fn_name, str(fn_args)[:140])
+            logger.info("Pass1 >> %s(%s)", fn_name, str(fn_args)[:140])
 
             if fn_name == "search_pexels":
                 result = _tool_search_pexels(fn_args["query"], fn_args.get("per_page", 4))
@@ -563,7 +565,7 @@ def _pass1_generate_plan(brief: dict) -> dict | None:
             else:
                 result_str = json.dumps({"error": f"Tool '{fn_name}' not available in Pass 1"})
 
-            logger.info("Pass1 ← %s", result_str[:160])
+            logger.info("Pass1 << %s", result_str[:160])
             tool_results.append({
                 "role":         "tool",
                 "tool_call_id": tc["id"],
@@ -600,31 +602,37 @@ def _apply_layout_plan(
     board_url = board["board_url"]
 
     image_placements: dict[str, str] = {}
-    used_photo_ids:   set[int]       = set()
 
+    # Deduplicate photos before computing grid positions
+    seen_photo_ids: set[int] = set()
+    unique_images: list[dict] = []
     for img in plan.get("images", []):
         pid = int(img["photo_id"])
-        if pid in used_photo_ids:
+        if pid in seen_photo_ids:
             logger.warning("Dedup: skipping repeated photo_id %d", pid)
             continue
-        used_photo_ids.add(pid)
+        seen_photo_ids.add(pid)
+        unique_images.append(img)
 
-        slot = _GRID_SLOTS.get(img["slot_id"], {"x": 0, "y": 0, "width": 400, "rotation": 0})
+    grid = _compute_grid(len(unique_images))
+
+    for idx, img in enumerate(unique_images):
+        pos = grid[idx]
         result = _tool_place_image(
             board_id,
             img["url"],
             int(img["orig_w"]),
             int(img["orig_h"]),
-            float(slot["x"]),
-            float(slot["y"]),
-            int(slot["width"]),
-            float(slot.get("rotation", 0)),
+            float(pos["x"]),
+            float(pos["y"]),
+            int(pos["width"]),
+            0.0,
         )
         if result.get("ok"):
-            image_placements[img["slot_id"]] = result["item_id"]
-            logger.info("Placed %s → %s", img["slot_id"], result["item_id"])
+            image_placements[f"img_{idx}"] = result["item_id"]
+            logger.info("Placed img_%d → %s", idx, result["item_id"])
         else:
-            logger.warning("Failed to place %s: %s", img["slot_id"], result.get("error"))
+            logger.warning("Failed to place img_%d: %s", idx, result.get("error"))
 
     sticky_placements: dict[str, str] = {}
 
@@ -662,9 +670,9 @@ def _pass2_refine(
         "Please review and refine positions.\n\n"
         "LAYOUT PLAN:\n"
         f"{json.dumps(layout_plan, indent=2)}\n\n"
-        "IMAGE PLACEMENTS (slot_id → miro_item_id):\n"
+        "IMAGE PLACEMENTS (img_index → miro_item_id):\n"
         f"{json.dumps(image_placements, indent=2)}\n\n"
-        "STICKY PLACEMENTS (slot_id → miro_item_id):\n"
+        "STICKY PLACEMENTS (label → miro_item_id):\n"
         f"{json.dumps(sticky_placements, indent=2)}\n\n"
         f"board_id: {board_id}\n\n"
         "Use move_item and move_sticky to nudge positions. "
@@ -698,7 +706,7 @@ def _pass2_refine(
         for tc in msg["tool_calls"]:
             fn_name = tc["function"]["name"]
             fn_args = json.loads(tc["function"]["arguments"])
-            logger.info("Pass2 → %s(%s)", fn_name, str(fn_args)[:120])
+            logger.info("Pass2 >> %s(%s)", fn_name, str(fn_args)[:120])
 
             if fn_name == "move_item":
                 result = _tool_move_item(
@@ -725,7 +733,7 @@ def _pass2_refine(
                 result = {"error": f"Tool '{fn_name}' not available in Pass 2"}
 
             result_str = json.dumps(result)
-            logger.info("Pass2 ← %s", result_str[:120])
+            logger.info("Pass2 << %s", result_str[:120])
             tool_results.append({
                 "role":         "tool",
                 "tool_call_id": tc["id"],
