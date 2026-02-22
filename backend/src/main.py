@@ -213,6 +213,86 @@ async def create_miro_board(session_id: str):
 
 _pref_log = logging.getLogger("preferences")
 
+_EXTRACT_SYSTEM = """You are an interior design preference extractor.
+Given a consultation transcript between a user and an AI designer, extract the user's
+design preferences and return ONLY a valid JSON object with these exact keys:
+
+{
+  "style": "design style as a single string, e.g. Scandinavian minimalist",
+  "room_type": "e.g. living room, bedroom, home office",
+  "budget_min": 0,
+  "budget_max": 0,
+  "currency": "EUR",
+  "colors": ["list of colors/palettes mentioned"],
+  "lifestyle": ["lifestyle tags, e.g. works from home, has pets, entertains often"],
+  "must_haves": ["essential items or features"],
+  "dealbreakers": ["things to avoid"],
+  "existing_furniture": ["items the user already owns"]
+}
+
+Rules:
+- Use empty string for style/room_type if not mentioned.
+- Use 0 for budget_min/budget_max if not mentioned; infer from context if a range is described.
+- All list fields default to [] if not mentioned.
+- Extract inferred information — e.g. if the user says "cozy Scandinavian vibe" that's a style.
+- Return ONLY the JSON object, no explanation."""
+
+
+class TranscriptRequest(BaseModel):
+    transcript: list[str]
+
+
+@app.post("/api/sessions/{session_id}/extract-preferences")
+async def extract_preferences_from_transcript(session_id: str, body: TranscriptRequest):
+    """Extract UserPreferences from the ElevenLabs conversation transcript using Claude,
+    save them to the session, and kick off Miro board generation."""
+    from .agents.voice_intake import _extract_json  # noqa: PLC0415
+    from .tools.llm import call_claude  # noqa: PLC0415
+
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    transcript_text = "\n".join(body.transcript)
+    _pref_log.info("Extracting preferences for %s from %d transcript lines", session_id, len(body.transcript))
+
+    try:
+        raw = await call_claude(
+            messages=[{"role": "user", "content": f"Transcript:\n{transcript_text}"}],
+            system=_EXTRACT_SYSTEM,
+            temperature=0.1,
+        )
+        extracted = _extract_json(raw)
+    except Exception:
+        _pref_log.exception("Preference extraction failed for %s, using empty prefs", session_id)
+        extracted = {}
+
+    # Parse through Pydantic so we get type coercion and defaults
+    try:
+        prefs = UserPreferences(**extracted)
+    except Exception:
+        _pref_log.warning("Pydantic parse failed for extracted prefs %s, using defaults", extracted)
+        prefs = UserPreferences()
+
+    dumped = prefs.model_dump()
+    _pref_log.info("Extracted preferences for %s: %s", session_id, dumped)
+    db.update_session(session_id, {"preferences": dumped, "status": "consulting"})
+
+    # Kick off Miro board generation with the freshly extracted preferences
+    brief = _preferences_to_brief(dumped)
+    logging.getLogger("miro_task").info("Generating Miro board for %s with brief: %s", session_id, brief)
+
+    async def _run_miro():
+        try:
+            result = await asyncio.to_thread(generate_vision_board_with_miro_ai, brief)
+            db.update_session(session_id, {"miro_board_url": result.url})
+            logging.getLogger("miro_task").info("Board ready for %s: %s", session_id, result.url)
+        except Exception:
+            logging.getLogger("miro_task").exception("Miro board creation failed for %s", session_id)
+
+    asyncio.create_task(_run_miro())
+    return {"preferences": dumped, "status": "pending"}
+
 
 @app.post("/api/sessions/{session_id}/preferences")
 async def save_preferences(session_id: str, prefs: UserPreferences):

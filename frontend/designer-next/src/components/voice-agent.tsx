@@ -23,24 +23,28 @@ export default function VoiceAgent({
 }: VoiceAgentProps) {
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
-  // Mirrors the accumulated ElevenLabs preferences so create_vision_board
-  // can save them to the DB before generating the Miro board.
+  // Ref mirrors transcript state so complete_consultation closure is never stale.
+  const transcriptRef = useRef<string[]>([]);
   const preferencesRef = useRef<Record<string, unknown>>({});
 
   const conversation = useConversation({
     onConnect: () => {
       setError(null);
       setTranscript((prev) => [...prev, "[Connected to AI consultant]"]);
+      transcriptRef.current = [...transcriptRef.current, "[Connected to AI consultant]"];
     },
     onDisconnect: () => {
       setTranscript((prev) => [...prev, "[Consultation ended]"]);
+      transcriptRef.current = [...transcriptRef.current, "[Consultation ended]"];
     },
     onError: (message: string) => {
       setError(message);
     },
     onMessage: (props: { message: string; source: "user" | "ai"; role: "user" | "agent" }) => {
       const prefix = props.role === "user" ? "You" : "AI";
-      setTranscript((prev) => [...prev, `${prefix}: ${props.message}`]);
+      const line = `${prefix}: ${props.message}`;
+      setTranscript((prev) => [...prev, line]);
+      transcriptRef.current = [...transcriptRef.current, line];
     },
   });
 
@@ -95,17 +99,17 @@ export default function VoiceAgent({
             return "Vision board will be generated at the end of the consultation with all collected preferences";
           },
           complete_consultation: async () => {
-            // Use preferencesRef.current — NOT onComplete's stale closure over React state.
-            // By the time the agent calls this, preferencesRef has all accumulated data.
+            // Send the full transcript to the backend — Claude extracts structured
+            // preferences from it and kicks off Miro board generation atomically.
+            // This is more reliable than depending on client tool calls firing correctly.
             try {
-              await fetch(`/api/sessions/${sessionId}/preferences`, {
+              await fetch(`/api/sessions/${sessionId}/extract-preferences`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(preferencesRef.current),
+                body: JSON.stringify({ transcript: transcriptRef.current }),
               });
-              fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" }).catch(() => {});
             } catch {
-              // navigate even on save failure
+              // Navigate even if extraction fails
             }
             onComplete();
             return "Consultation complete, navigating to design phase";
