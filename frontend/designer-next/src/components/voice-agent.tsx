@@ -26,6 +26,9 @@ export default function VoiceAgent({
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
   const miroBoardIdRef = useRef<string | null>(null);
+  // Mirrors the accumulated ElevenLabs preferences so create_vision_board
+  // can save them to the DB before generating the Miro board.
+  const preferencesRef = useRef<Record<string, unknown>>({});
 
   const conversation = useConversation({
     onConnect: () => {
@@ -65,6 +68,14 @@ export default function VoiceAgent({
             return "Image added to mood board";
           },
           update_preference: (params: { key: string; value: unknown }) => {
+            // Accumulate into ref (array fields append, scalar fields overwrite)
+            const arrayFields = ["colors", "lifestyle", "must_haves", "dealbreakers", "existing_furniture"];
+            if (arrayFields.includes(params.key) && typeof params.value === "string") {
+              const current = (preferencesRef.current[params.key] as string[] | undefined) ?? [];
+              preferencesRef.current = { ...preferencesRef.current, [params.key]: [...current, params.value] };
+            } else {
+              preferencesRef.current = { ...preferencesRef.current, [params.key]: params.value };
+            }
             onPreferenceUpdate(params.key, params.value);
             if (miroBoardIdRef.current) {
               fetch(`/api/sessions/${sessionId}/miro/item`, {
@@ -80,11 +91,19 @@ export default function VoiceAgent({
             return "Preference updated";
           },
           set_room_type: (params: { type: string }) => {
+            preferencesRef.current = { ...preferencesRef.current, room_type: params.type };
             onRoomTypeSet(params.type);
             return `Room type set to ${params.type}`;
           },
           create_vision_board: async () => {
             try {
+              // Save current preferences to DB before generating the board,
+              // so the backend has real ElevenLabs data (not an empty object).
+              await fetch(`/api/sessions/${sessionId}/preferences`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(preferencesRef.current),
+              });
               const res = await fetch(`/api/sessions/${sessionId}/miro`, {
                 method: "POST",
               });

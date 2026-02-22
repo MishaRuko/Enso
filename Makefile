@@ -55,8 +55,13 @@ migrate:
 dev:
 	tilt up
 
+# Run backend + frontend simultaneously without Tilt or Supabase.
+# Ctrl-C stops both processes.
+dev-simple:
+	bash run.sh
+
 dev-down:
 	tilt down
 	lsof -ti:8100,3000 | xargs kill -9 2>/dev/null || true
 
-.PHONY: format-ts lint-ts check-ts build format-py lint-py check-py format lint check install dev dev-down supabase-init db-start db-stop migrate
+.PHONY: format-ts lint-ts check-ts build format-py lint-py check-py format lint check install dev dev-simple dev-down supabase-init db-start db-stop migrate
