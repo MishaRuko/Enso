@@ -19,17 +19,14 @@ Tiers:
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass
 
 import httpx
 
-from ..config import (
-    MIRO_API_TOKEN,
-    MIRO_MCP_ENABLED,
-    OPENROUTER_API_KEY,
-    PEXELS_API_KEY,
-)
+from ..config import (MIRO_API_TOKEN, MIRO_MCP_ENABLED, OPENROUTER_API_KEY,
+                      PEXELS_API_KEY)
 from .miro import create_board_from_brief
 
 logger = logging.getLogger(__name__)
@@ -37,6 +34,47 @@ logger = logging.getLogger(__name__)
 _MIRO_API_BASE = "https://api.miro.com/v2"
 _AGENT_MODEL   = "anthropic/claude-sonnet-4-6"
 _MAX_TURNS     = 25  # hard cap per pass
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dynamic square grid — computed from photo count at placement time
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _compute_grid(n: int, gap: int = 10) -> list[dict]:
+    """
+    Compute centred square-grid cell positions for n images.
+    Grid width is capped at 1600px (fits between sticky columns at x=±1100).
+    All cells are the same size with 3:2 landscape aspect ratio.
+    Minimum gap between images: 10px on all sides.
+    Returns list of {x, y, width, height} dicts (board centre coordinates).
+    """
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+    max_w = 1600
+    img_w = round((max_w - (cols + 1) * gap) / cols)
+    img_h = round(img_w * 2 / 3)
+    total_w = cols * img_w + (cols + 1) * gap
+    total_h = rows * img_h + (rows + 1) * gap
+    positions = []
+    for i in range(n):
+        col = i % cols
+        row = i // cols
+        x = -total_w / 2 + gap + col * (img_w + gap) + img_w / 2
+        y = -total_h / 2 + gap + row * (img_h + gap) + img_h / 2
+        positions.append({"x": round(x), "y": round(y), "width": img_w, "height": img_h})
+    return positions
+
+# Sticky slots: fixed position and colour per brief field label
+_STICKY_SLOTS: dict[str, dict] = {
+    "STYLE":       {"x": -1100, "y": -600, "color": "light_blue"},
+    "VIBE":        {"x": -1100, "y": -280, "color": "cyan"},
+    "AVOID":       {"x": -1100, "y":   40, "color": "red"},
+    "NOTES":       {"x": -1100, "y":  360, "color": "white"},
+    "BUDGET":      {"x":  1100, "y": -600, "color": "light_yellow"},
+    "ROOMS":       {"x":  1100, "y": -280, "color": "light_green"},
+    "MUST HAVES":  {"x":  1100, "y":   40, "color": "light_pink"},
+    "CONSTRAINTS": {"x":  1100, "y":  360, "color": "gray"},
+}
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +139,8 @@ _PASS1_TOOLS: list[dict] = [
             "description": (
                 "Submit the complete Pass 1 layout plan. "
                 "Call this ONCE — only after searching for all photos and selecting candidates. "
-                "This ends Pass 1. Do NOT call it more than once."
+                "This ends Pass 1. Do NOT call it more than once. "
+                "Positions, sizes, and rotations are handled by the system — do NOT provide them."
             ),
             "parameters": {
                 "type": "object",
@@ -112,56 +151,44 @@ _PASS1_TOOLS: list[dict] = [
                     },
                     "images": {
                         "type": "array",
-                        "description": "9–12 image slots; no duplicate photo_id allowed",
+                        "description": (
+                            "Exactly 9 photos (no duplicate photo_id). "
+                            "Order them from most to least impactful — "
+                            "the system places them left-to-right, top-to-bottom in a square grid."
+                        ),
                         "items": {
                             "type": "object",
                             "properties": {
-                                "slot_id":  {"type": "string",  "description": "Unique label e.g. 'hero', 'medium_2'"},
                                 "photo_id": {"type": "integer", "description": "Pexels photo id (dedup key)"},
                                 "url":      {"type": "string",  "description": "Pexels ?w=940 image URL"},
                                 "orig_w":   {"type": "integer", "description": "Original pixel width from search result"},
                                 "orig_h":   {"type": "integer", "description": "Original pixel height from search result"},
-                                "x":        {"type": "number",  "description": "Centre x coordinate on board"},
-                                "y":        {"type": "number",  "description": "Centre y coordinate on board"},
-                                "width":    {"type": "integer", "description": "Display width in pixels"},
-                                "rotation": {"type": "number",  "description": "Rotation in degrees (default 0)"},
                             },
-                            "required": ["slot_id", "photo_id", "url", "orig_w", "orig_h", "x", "y", "width"],
+                            "required": ["photo_id", "url", "orig_w", "orig_h"],
                         },
                     },
                     "stickies": {
                         "type": "array",
-                        "description": "Exactly 8 sticky notes (one per brief category)",
+                        "description": (
+                            "Exactly 8 sticky notes, one per brief category. "
+                            "Allowed labels: STYLE, VIBE, AVOID, NOTES, BUDGET, ROOMS, MUST HAVES, CONSTRAINTS. "
+                            "Positions and colors are handled by the system."
+                        ),
                         "items": {
                             "type": "object",
                             "properties": {
-                                "slot_id": {"type": "string",  "description": "Unique label e.g. 'sticky_style'"},
-                                "label":   {"type": "string",  "description": "Header e.g. 'STYLE'"},
-                                "value":   {"type": "string",  "description": "Body text from brief"},
-                                "x":       {"type": "number"},
-                                "y":       {"type": "number"},
-                                "color":   {
+                                "label":   {
                                     "type": "string",
-                                    "enum": ["light_yellow", "light_green", "light_pink", "gray",
-                                             "light_blue", "cyan", "red", "white"],
+                                    "description": "One of: STYLE, VIBE, AVOID, NOTES, BUDGET, ROOMS, MUST HAVES, CONSTRAINTS",
+                                    "enum": ["STYLE", "VIBE", "AVOID", "NOTES", "BUDGET", "ROOMS", "MUST HAVES", "CONSTRAINTS"],
                                 },
+                                "value":   {"type": "string", "description": "Body text from brief"},
                             },
-                            "required": ["slot_id", "label", "value", "x", "y", "color"],
+                            "required": ["label", "value"],
                         },
-                    },
-                    "summary": {
-                        "type": "object",
-                        "description": "Moodboard summary text block placed below the images",
-                        "properties": {
-                            "content": {"type": "string", "description": "3–4 evocative sentences describing the vision"},
-                            "x":       {"type": "number"},
-                            "y":       {"type": "number"},
-                            "width":   {"type": "integer", "default": 520},
-                        },
-                        "required": ["content", "x", "y"],
                     },
                 },
-                "required": ["board_name", "images", "stickies", "summary"],
+                "required": ["board_name", "images", "stickies"],
             },
         },
     },
@@ -300,11 +327,15 @@ def _tool_place_image(
         return {"ok": False, "error": r.text[:200]}
     item_id = r.json()["id"]
 
-    # Step 2: PATCH with both dimensions — final proportional size, no cropping
+    # Step 2: PATCH position + width. Miro sometimes ignores position from the
+    # multipart POST; PATCHing it explicitly guarantees the correct placement.
     p = httpx.patch(
         f"{_MIRO_API_BASE}/boards/{board_id}/images/{item_id}",
         headers={"Authorization": _auth(), "Content-Type": "application/json", "Accept": "application/json"},
-        json={"geometry": {"width": width, "height": target_h}},
+        json={
+            "geometry": {"width": width},
+            "position": {"x": x, "y": y, "origin": "center"},
+        },
         timeout=15.0,
     )
     if not p.is_success:
@@ -400,7 +431,10 @@ def _llm(system: str, messages: list[dict], tools: list[dict]) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _PASS1_SYSTEM = """\
-You are an expert interior design AI creating a Miro vision board layout plan.
+You are an expert interior design AI curating photos for a Miro vision board.
+
+The board layout (grid positions, sizes) is handled entirely by the system.
+Your only job is to select the right photos and write the text content.
 
 WORKFLOW — follow every step exactly:
 
@@ -410,35 +444,30 @@ WORKFLOW — follow every step exactly:
    textures/materials, colour palette, lifestyle/mood.
    Collect 15–20 candidate photos total.
 
-2. SELECT — choose 9–12 photos (no duplicate photo_id).
-   Size categories:
-   • 1 HERO: width 14–16 px, anchors top-left of cluster.
-   • 4–6 MEDIUM: width 9–11 px, surrounding hero organically.
-   • 3–5 SMALL: width 6–8 px, tucked into gaps.
+2. SELECT — choose exactly 9 photos (no duplicate photo_id).
+   Order them from most to least impactful — the system places them
+   left-to-right, top-to-bottom in a 3×3 square grid:
+   • Position 1 (top-left)    — your best full-room shot
+   • Position 2 (top-centre)  — second strongest room or furniture photo
+   • Position 3 (top-right)   — third strongest; complements position 1
+   • Position 4 (middle-left) — different angle or texture focus
+   • Position 5 (centre)      — colour palette or material emphasis
+   • Position 6 (middle-right)— accent detail or lifestyle shot
+   • Position 7 (bottom-left) — texture or material detail
+   • Position 8 (bottom-centre)— complementary mood shot
+   • Position 9 (bottom-right) — final accent with a different photo
 
-3. LAYOUT — design a collage (NOT a grid):
-   • Corner overlaps of 5–15 px between adjacent images.
-   • 20–30 % whitespace across the canvas.
-   • Centre composition near (0, 0).
-   • Keep all images within x ∈ [−200, 200], y ∈ [−140, 140].
-   • Apply slight rotation (±2–5°) to 1–2 medium images for collage feel.
+3. STICKIES — write the text value for each of the 8 sticky note labels.
+   Use only these exact labels (system handles position and colour):
+   STYLE, VIBE, AVOID, NOTES, BUDGET, ROOMS, MUST HAVES, CONSTRAINTS
+   Draw values directly from the brief. If a field has no value, write "—".
 
-4. STICKIES — plan all 8 sticky notes in two columns flanking the images:
-   LEFT  (x ≈ −1100): STYLE (light_blue), VIBE (cyan), AVOID (red), NOTES (white)
-   RIGHT (x ≈ +1100): BUDGET (light_yellow), ROOMS (light_green),
-                       MUST HAVES (light_pink), CONSTRAINTS (gray)
-   Align y values with image rows. Never overlap images.
-
-5. SUMMARY — 3–4 evocative sentences capturing the aesthetic vision.
-   Place as text block at y ≈ 350–420, x ≈ 0.
-
-6. SUBMIT — call submit_layout_plan ONCE with the complete plan.
+4. SUBMIT — call submit_layout_plan ONCE with the complete plan.
    After the call, output nothing else.
 
 RULES:
-• Never duplicate a photo_id across image slots.
-• Each slot_id and sticky slot_id must be unique.
-• rotation defaults to 0; use small values (±2–5°) on at most 2 images.
+• Never duplicate a photo_id.
+• Do NOT provide x, y, width, rotation, or color — those are set by the system.
 • Do NOT call submit_layout_plan more than once.
 """
 
@@ -515,7 +544,7 @@ def _pass1_generate_plan(brief: dict) -> dict | None:
         for tc in msg["tool_calls"]:
             fn_name = tc["function"]["name"]
             fn_args = json.loads(tc["function"]["arguments"])
-            logger.info("Pass1 → %s(%s)", fn_name, str(fn_args)[:140])
+            logger.info("Pass1 >> %s(%s)", fn_name, str(fn_args)[:140])
 
             if fn_name == "search_pexels":
                 result = _tool_search_pexels(fn_args["query"], fn_args.get("per_page", 4))
@@ -536,7 +565,7 @@ def _pass1_generate_plan(brief: dict) -> dict | None:
             else:
                 result_str = json.dumps({"error": f"Tool '{fn_name}' not available in Pass 1"})
 
-            logger.info("Pass1 ← %s", result_str[:160])
+            logger.info("Pass1 << %s", result_str[:160])
             tool_results.append({
                 "role":         "tool",
                 "tool_call_id": tc["id"],
@@ -573,50 +602,48 @@ def _apply_layout_plan(
     board_url = board["board_url"]
 
     image_placements: dict[str, str] = {}
-    used_photo_ids:   set[int]       = set()
 
+    # Deduplicate photos before computing grid positions
+    seen_photo_ids: set[int] = set()
+    unique_images: list[dict] = []
     for img in plan.get("images", []):
         pid = int(img["photo_id"])
-        if pid in used_photo_ids:
+        if pid in seen_photo_ids:
             logger.warning("Dedup: skipping repeated photo_id %d", pid)
             continue
-        used_photo_ids.add(pid)
+        seen_photo_ids.add(pid)
+        unique_images.append(img)
 
+    grid = _compute_grid(len(unique_images))
+
+    for idx, img in enumerate(unique_images):
+        pos = grid[idx]
         result = _tool_place_image(
             board_id,
             img["url"],
             int(img["orig_w"]),
             int(img["orig_h"]),
-            float(img["x"]),
-            float(img["y"]),
-            int(img["width"]),
-            float(img.get("rotation", 0)),
+            float(pos["x"]),
+            float(pos["y"]),
+            int(pos["width"]),
+            0.0,
         )
         if result.get("ok"):
-            image_placements[img["slot_id"]] = result["item_id"]
-            logger.info("Placed %s → %s", img["slot_id"], result["item_id"])
+            image_placements[f"img_{idx}"] = result["item_id"]
+            logger.info("Placed img_%d → %s", idx, result["item_id"])
         else:
-            logger.warning("Failed to place %s: %s", img["slot_id"], result.get("error"))
+            logger.warning("Failed to place img_%d: %s", idx, result.get("error"))
 
     sticky_placements: dict[str, str] = {}
 
     for s in plan.get("stickies", []):
+        pos = _STICKY_SLOTS.get(s["label"].upper(), {"x": 0, "y": 500, "color": "light_yellow"})
         result = _tool_sticky_note(
             board_id, s["label"], s["value"],
-            float(s["x"]), float(s["y"]), s["color"],
+            float(pos["x"]), float(pos["y"]), pos["color"],
         )
         if result.get("ok"):
-            sticky_placements[s["slot_id"]] = result["item_id"]
-
-    summary = plan.get("summary", {})
-    if summary.get("content"):
-        _tool_text_block(
-            board_id,
-            summary["content"],
-            float(summary.get("x", 0)),
-            float(summary.get("y", 650)),
-            int(summary.get("width", 520)),
-        )
+            sticky_placements[s["label"]] = result["item_id"]
 
     logger.info(
         "Plan applied: %d images, %d stickies on %s",
@@ -643,9 +670,9 @@ def _pass2_refine(
         "Please review and refine positions.\n\n"
         "LAYOUT PLAN:\n"
         f"{json.dumps(layout_plan, indent=2)}\n\n"
-        "IMAGE PLACEMENTS (slot_id → miro_item_id):\n"
+        "IMAGE PLACEMENTS (img_index → miro_item_id):\n"
         f"{json.dumps(image_placements, indent=2)}\n\n"
-        "STICKY PLACEMENTS (slot_id → miro_item_id):\n"
+        "STICKY PLACEMENTS (label → miro_item_id):\n"
         f"{json.dumps(sticky_placements, indent=2)}\n\n"
         f"board_id: {board_id}\n\n"
         "Use move_item and move_sticky to nudge positions. "
@@ -679,7 +706,7 @@ def _pass2_refine(
         for tc in msg["tool_calls"]:
             fn_name = tc["function"]["name"]
             fn_args = json.loads(tc["function"]["arguments"])
-            logger.info("Pass2 → %s(%s)", fn_name, str(fn_args)[:120])
+            logger.info("Pass2 >> %s(%s)", fn_name, str(fn_args)[:120])
 
             if fn_name == "move_item":
                 result = _tool_move_item(
@@ -706,7 +733,7 @@ def _pass2_refine(
                 result = {"error": f"Tool '{fn_name}' not available in Pass 2"}
 
             result_str = json.dumps(result)
-            logger.info("Pass2 ← %s", result_str[:120])
+            logger.info("Pass2 << %s", result_str[:120])
             tool_results.append({
                 "role":         "tool",
                 "tool_call_id": tc["id"],

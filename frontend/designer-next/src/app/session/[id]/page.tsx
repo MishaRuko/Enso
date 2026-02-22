@@ -332,7 +332,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 </div>
               )}
 
-              {/* consulting -- preferences saved, show upload */}
+              {/* consulting -- preferences saved, vision board generating, show upload */}
               {currentStatus === "consulting" && (
                 <div
                   style={{
@@ -342,6 +342,36 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                     animation: "fadeUp 0.6s ease-out",
                   }}
                 >
+                  {!session.miro_board_url && (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        padding: "0.75rem 1.5rem",
+                        background: "var(--accent-subtle)",
+                        borderBottom: "1px solid var(--border)",
+                        fontSize: "0.8125rem",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "12px",
+                          height: "12px",
+                          border: "2px solid var(--border)",
+                          borderTopColor: "var(--accent)",
+                          borderRadius: "50%",
+                          flexShrink: 0,
+                          animation: "spin 0.8s linear infinite",
+                          display: "inline-block",
+                        }}
+                      />
+                      <span style={{ color: "var(--text-secondary)" }}>
+                        Generating your vision board in the background — it will appear above when ready
+                        (2–4 min).
+                      </span>
+                    </div>
+                  )}
                   <FloorplanUpload sessionId={id} onUploaded={refetch} />
                 </div>
               )}

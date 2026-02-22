@@ -2,50 +2,60 @@
 
 import { useConversation } from "@elevenlabs/react";
 import { useCallback, useRef, useState } from "react";
-import type { MoodBoardItem } from "./mood-board";
 
 interface VoiceAgentProps {
   agentId: string;
   sessionId: string;
-  onMoodBoardAdd: (item: MoodBoardItem) => void;
-  onPreferenceUpdate: (key: string, value: unknown) => void;
-  onRoomTypeSet: (type: string) => void;
-  onMiroBoardCreated: (url: string, boardId: string) => void;
   onComplete: () => void;
 }
 
-export default function VoiceAgent({
-  agentId,
-  sessionId,
-  onMoodBoardAdd,
-  onPreferenceUpdate,
-  onRoomTypeSet,
-  onMiroBoardCreated,
-  onComplete,
-}: VoiceAgentProps) {
+export default function VoiceAgent({ agentId, sessionId, onComplete }: VoiceAgentProps) {
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
-  const miroBoardIdRef = useRef<string | null>(null);
-  // Mirrors the accumulated ElevenLabs preferences so create_vision_board
-  // can save them to the DB before generating the Miro board.
-  const preferencesRef = useRef<Record<string, unknown>>({});
+  const [saving, setSaving] = useState(false);
+  // Ref so handleStop always reads the latest transcript (no stale closure).
+  const transcriptRef = useRef<string[]>([]);
 
   const conversation = useConversation({
     onConnect: () => {
       setError(null);
-      setTranscript((prev) => [...prev, "[Connected to AI consultant]"]);
+      const line = "[Connected to AI consultant]";
+      setTranscript((prev) => [...prev, line]);
+      transcriptRef.current = [...transcriptRef.current, line];
     },
     onDisconnect: () => {
-      setTranscript((prev) => [...prev, "[Consultation ended]"]);
+      const line = "[Consultation ended]";
+      setTranscript((prev) => [...prev, line]);
+      transcriptRef.current = [...transcriptRef.current, line];
     },
-    onError: (message: string) => {
-      setError(message);
-    },
-    onMessage: (props: { message: string; source: "user" | "ai"; role: "user" | "agent" }) => {
+    onError: (message: string) => setError(message),
+    onMessage: (props: { message: string; role: "user" | "agent" }) => {
       const prefix = props.role === "user" ? "You" : "AI";
-      setTranscript((prev) => [...prev, `${prefix}: ${props.message}`]);
+      const line = `${prefix}: ${props.message}`;
+      setTranscript((prev) => [...prev, line]);
+      transcriptRef.current = [...transcriptRef.current, line];
     },
   });
+
+  const handleStop = useCallback(async () => {
+    try {
+      await conversation.endSession();
+    } catch {
+      // ignore
+    }
+    setSaving(true);
+    try {
+      await fetch(`/api/sessions/${sessionId}/extract-preferences`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: transcriptRef.current }),
+      });
+    } catch {
+      // navigate even if extraction fails
+    }
+    setSaving(false);
+    onComplete();
+  }, [conversation, sessionId, onComplete]);
 
   const handleStart = useCallback(async () => {
     setError(null);
@@ -55,119 +65,27 @@ export default function VoiceAgent({
         agentId,
         connectionType: "webrtc",
         clientTools: {
-          add_to_mood_board: (params: {
-            imageUrl: string;
-            category: string;
-            description: string;
-          }) => {
-            onMoodBoardAdd({
-              imageUrl: params.imageUrl,
-              category: params.category,
-              description: params.description,
-            });
-            return "Image added to mood board";
-          },
-          update_preference: (params: { key: string; value: unknown }) => {
-            // Accumulate into ref (array fields append, scalar fields overwrite)
-            const arrayFields = [
-              "colors",
-              "lifestyle",
-              "must_haves",
-              "dealbreakers",
-              "existing_furniture",
-            ];
-            if (arrayFields.includes(params.key) && typeof params.value === "string") {
-              const current = (preferencesRef.current[params.key] as string[] | undefined) ?? [];
-              preferencesRef.current = {
-                ...preferencesRef.current,
-                [params.key]: [...current, params.value],
-              };
-            } else {
-              preferencesRef.current = { ...preferencesRef.current, [params.key]: params.value };
-            }
-            onPreferenceUpdate(params.key, params.value);
-            if (miroBoardIdRef.current) {
-              fetch(`/api/sessions/${sessionId}/miro/item`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  board_id: miroBoardIdRef.current,
-                  label: params.key,
-                  value: String(params.value),
-                }),
-              }).catch(() => {});
-            }
-            return "Preference updated";
-          },
-          set_room_type: (params: { type: string }) => {
-            preferencesRef.current = { ...preferencesRef.current, room_type: params.type };
-            onRoomTypeSet(params.type);
-            return `Room type set to ${params.type}`;
-          },
-          create_vision_board: async () => {
-            try {
-              // Save current preferences to DB before generating the board,
-              // so the backend has real ElevenLabs data (not an empty object).
-              await fetch(`/api/sessions/${sessionId}/preferences`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(preferencesRef.current),
-              });
-              const res = await fetch(`/api/sessions/${sessionId}/miro`, {
-                method: "POST",
-              });
-              if (!res.ok) throw new Error(`Miro API ${res.status}`);
-              const data = await res.json();
-              const boardId = data.board_id as string;
-              miroBoardIdRef.current = boardId;
-              onMiroBoardCreated(data.miro_board_url as string, boardId);
-              return "Vision board created successfully";
-            } catch {
-              return "Vision board creation failed, continuing without it";
-            }
-          },
+          set_room_type: () => "ok",
+          update_preference: () => "ok",
+          create_vision_board: () => "ok",
+          add_to_mood_board: () => "ok",
           complete_consultation: () => {
-            onComplete();
-            return "Consultation complete, navigating to design phase";
+            handleStop();
+            return "ok";
           },
         },
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to start conversation";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Failed to start conversation");
     }
-  }, [
-    agentId,
-    sessionId,
-    conversation,
-    onMoodBoardAdd,
-    onPreferenceUpdate,
-    onRoomTypeSet,
-    onMiroBoardCreated,
-    onComplete,
-  ]);
-
-  const handleStop = useCallback(async () => {
-    try {
-      await conversation.endSession();
-    } catch {
-      // ignore end-session errors
-    }
-  }, [conversation]);
+  }, [agentId, conversation, handleStop]);
 
   const isConnected = conversation.status === "connected";
   const isSpeaking = conversation.isSpeaking;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "1.25rem",
-        height: "100%",
-      }}
-    >
-      {/* Status indicator */}
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", height: "100%" }}>
+      {/* Status */}
       <div
         style={{
           display: "flex",
@@ -184,23 +102,30 @@ export default function VoiceAgent({
             width: "10px",
             height: "10px",
             borderRadius: "50%",
-            background: isConnected
-              ? isSpeaking
-                ? "var(--accent)"
-                : "var(--success)"
-              : "var(--muted)",
-            boxShadow: isConnected
-              ? `0 0 8px ${isSpeaking ? "var(--accent-glow)" : "var(--success-glow)"}`
-              : "none",
+            background: saving
+              ? "var(--accent)"
+              : isConnected
+                ? isSpeaking
+                  ? "var(--accent)"
+                  : "var(--success)"
+                : "var(--muted)",
+            boxShadow:
+              isConnected && !saving
+                ? `0 0 8px ${isSpeaking ? "var(--accent-glow)" : "var(--success-glow)"}`
+                : saving
+                  ? "0 0 8px var(--accent-glow)"
+                  : "none",
             transition: "all var(--transition-slow)",
+            animation: saving ? "progressPulse 1s ease-in-out infinite" : "none",
           }}
         />
         <span style={{ fontSize: "0.8125rem", color: "var(--muted)", flex: 1 }}>
-          {!isConnected && "Ready to connect"}
-          {isConnected && isSpeaking && "AI is speaking..."}
-          {isConnected && !isSpeaking && "Listening..."}
+          {saving && "Analysing conversation…"}
+          {!saving && !isConnected && "Ready to connect"}
+          {!saving && isConnected && isSpeaking && "AI is speaking…"}
+          {!saving && isConnected && !isSpeaking && "Listening…"}
         </span>
-        {isConnected && (
+        {isConnected && !saving && (
           <div
             style={{
               width: "6px",
@@ -213,7 +138,7 @@ export default function VoiceAgent({
         )}
       </div>
 
-      {/* Waveform / visual indicator */}
+      {/* Waveform */}
       <div
         style={{
           display: "flex",
@@ -227,7 +152,6 @@ export default function VoiceAgent({
           position: "relative",
         }}
       >
-        {/* Subtle gradient background when active */}
         {isConnected && (
           <div
             style={{
@@ -240,17 +164,8 @@ export default function VoiceAgent({
             }}
           />
         )}
-
         {isConnected ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "3px",
-              height: "70px",
-              position: "relative",
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", gap: "3px", height: "70px", position: "relative" }}>
             {Array.from({ length: 32 }).map((_, i) => (
               <div
                 key={i}
@@ -258,7 +173,7 @@ export default function VoiceAgent({
                   width: "2.5px",
                   borderRadius: "var(--radius-full)",
                   background: isSpeaking
-                    ? `linear-gradient(to top, var(--accent), var(--gradient-mid))`
+                    ? "linear-gradient(to top, var(--accent), var(--gradient-mid))"
                     : "var(--success)",
                   animation: `waveBar 0.8s ease-in-out ${i * 0.04}s infinite alternate`,
                   height: isSpeaking ? "100%" : "30%",
@@ -269,14 +184,7 @@ export default function VoiceAgent({
             ))}
           </div>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
             <svg
               width="40"
               height="40"
@@ -300,26 +208,48 @@ export default function VoiceAgent({
         )}
       </div>
 
-      {/* Start/Stop button */}
+      {/* Start / End button */}
       <button
         onClick={isConnected ? handleStop : handleStart}
+        disabled={saving}
         type="button"
         style={{
           padding: "0.875rem 1.5rem",
           borderRadius: "var(--radius-md)",
           fontSize: "1rem",
           fontWeight: 600,
-          background: isConnected ? "var(--error)" : "var(--accent)",
-          color: "#fff",
+          background: saving
+            ? "var(--surface)"
+            : isConnected
+              ? "var(--error)"
+              : "linear-gradient(135deg, var(--accent), var(--gradient-mid))",
+          color: saving ? "var(--muted)" : "#fff",
+          border: saving ? "1px solid var(--border)" : "none",
           transition: "all var(--transition-base)",
-          boxShadow: isConnected ? "none" : "var(--shadow-glow)",
+          boxShadow: !saving && !isConnected ? "var(--shadow-glow)" : "none",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           gap: "0.5rem",
+          opacity: saving ? 0.8 : 1,
         }}
       >
-        {isConnected ? (
+        {saving ? (
+          <>
+            <span
+              style={{
+                width: "14px",
+                height: "14px",
+                border: "2px solid var(--border)",
+                borderTopColor: "var(--muted)",
+                borderRadius: "50%",
+                animation: "spin 0.6s linear infinite",
+                display: "inline-block",
+              }}
+            />
+            Analysing conversation…
+          </>
+        ) : isConnected ? (
           <>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="6" width="12" height="12" rx="1" />
@@ -328,15 +258,7 @@ export default function VoiceAgent({
           </>
         ) : (
           <>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
             </svg>
@@ -359,14 +281,7 @@ export default function VoiceAgent({
             gap: "0.5rem",
           }}
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -403,22 +318,14 @@ export default function VoiceAgent({
             gap: "0.375rem",
           }}
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           Transcript
         </span>
         {transcript.length === 0 ? (
           <span style={{ color: "var(--muted)", fontSize: "0.8125rem", fontStyle: "italic" }}>
-            Start the consultation to see the transcript here...
+            Start the consultation to see the transcript here…
           </span>
         ) : (
           transcript.map((line, i) => (
@@ -426,28 +333,19 @@ export default function VoiceAgent({
               key={`t-${i}`}
               style={{
                 fontSize: "0.8125rem",
-                color: line.startsWith("You:")
-                  ? "var(--text)"
-                  : line.startsWith("[")
-                    ? "var(--muted)"
-                    : "#93c5fd",
+                color: line.startsWith("You:") ? "var(--text)" : line.startsWith("[") ? "var(--muted)" : "#93c5fd",
                 margin: 0,
                 lineHeight: 1.5,
                 padding: "0.25rem 0",
                 animation: "fadeIn 0.3s ease-out",
-                borderBottom:
-                  i < transcript.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none",
+                borderBottom: i < transcript.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none",
               }}
             >
               {line.startsWith("You:") && (
-                <span style={{ fontWeight: 600, color: "var(--accent)", marginRight: "0.375rem" }}>
-                  You:
-                </span>
+                <span style={{ fontWeight: 600, color: "var(--accent)", marginRight: "0.375rem" }}>You:</span>
               )}
               {line.startsWith("AI:") && (
-                <span style={{ fontWeight: 600, color: "#93c5fd", marginRight: "0.375rem" }}>
-                  AI:
-                </span>
+                <span style={{ fontWeight: 600, color: "#93c5fd", marginRight: "0.375rem" }}>AI:</span>
               )}
               {line.startsWith("You:") || line.startsWith("AI:")
                 ? line.substring(line.indexOf(":") + 2)
