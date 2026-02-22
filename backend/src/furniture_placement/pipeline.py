@@ -596,7 +596,9 @@ def export_scene_glb(
             # Place real model
             rot_matrix = trimesh.transformations.rotation_matrix(rot_rad, [0, 1, 0])
             furniture_mesh.apply_transform(rot_matrix)
-            furniture_mesh.apply_translation([pos["x"], pos["y"], pos["z"]])
+            # Re-align bottom to Y=0 after rotation (rotation can shift bounds)
+            min_y_after_rot = furniture_mesh.bounds[0][1]
+            furniture_mesh.apply_translation([pos["x"], -min_y_after_rot, pos["z"]])
             scene.add_geometry(furniture_mesh, node_name=node_name)
             real_count += 1
         else:
