@@ -54,8 +54,14 @@ def _extract_board_id(url: str) -> str:
 
 def _preferences_to_brief(prefs: dict) -> dict:
     style = prefs.get("style", "")
+    lifestyle = prefs.get("lifestyle", [])
+    colors = prefs.get("colors", [])
+    notes_parts = []
+    if lifestyle:
+        notes_parts.append("Lifestyle: " + ", ".join(lifestyle))
     return {
         "budget": prefs.get("budget_max"),
+        "budget_min": prefs.get("budget_min"),
         "currency": prefs.get("currency", "EUR"),
         "style": (
             [style] if isinstance(style, str) and style
@@ -65,10 +71,10 @@ def _preferences_to_brief(prefs: dict) -> dict:
         "rooms_priority": [prefs["room_type"]] if prefs.get("room_type") else [],
         "must_haves": prefs.get("must_haves", []),
         "existing_items": prefs.get("existing_furniture", []),
-        "constraints": [],
-        "vibe_words": prefs.get("colors", []),
+        "constraints": lifestyle,
+        "vibe_words": colors,
         "reference_images": [],
-        "notes": "",
+        "notes": "; ".join(notes_parts),
     }
 
 
