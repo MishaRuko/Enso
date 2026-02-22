@@ -71,20 +71,29 @@ export default function ConsultationPage() {
   const handleComplete = useCallback(async () => {
     setSaving(true);
     try {
-      await fetch(`/api/sessions/${sessionId}`, {
-        method: "PATCH",
+      // Save all accumulated ElevenLabs preferences to the backend.
+      await fetch(`/api/sessions/${sessionId}/preferences`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          preferences,
-          status: "consulting",
-        }),
+        body: JSON.stringify(preferences),
       });
+
+      // If the board wasn't created mid-consultation, generate it now with
+      // the full set of preferences we just saved.
+      if (!miroBoardUrl) {
+        const miroRes = await fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
+        if (miroRes.ok) {
+          const miroData = await miroRes.json();
+          setMiroBoardUrl(miroData.miro_board_url as string);
+        }
+      }
+
       router.push(`/session/${sessionId}`);
     } catch (err) {
       console.error("Failed to save preferences:", err);
       setSaving(false);
     }
-  }, [preferences, sessionId, router]);
+  }, [preferences, miroBoardUrl, sessionId, router]);
 
   // In text mode, show full-width text intake; in voice mode, show two-column layout
   if (textMode) {
