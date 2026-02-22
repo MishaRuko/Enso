@@ -70,3 +70,36 @@ export function createCheckout(sessionId: string): Promise<{ payment_link: strin
 export function generateMiroBoard(sessionId: string): Promise<{ miro_board_url: string }> {
   return apiFetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
 }
+
+// --- Voice Intake ---
+
+export function createVoiceSession(): Promise<{ session_id: string }> {
+  return apiFetch("/session/new", { method: "POST" });
+}
+
+export function getVoiceSession(sessionId: string): Promise<any> {
+  return apiFetch(`/session/${sessionId}`);
+}
+
+export function getVoiceSessionToken(sessionId: string): Promise<any> {
+  return apiFetch(`/voice/session_token?session_id=${sessionId}`, { method: "POST" });
+}
+
+export function voiceIntakeTurn(
+  sessionId: string,
+  userText: string
+): Promise<any> {
+  return apiFetch("/voice_intake/turn", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, user_text: userText }),
+  });
+}
+
+export function voiceIntakeFinalize(sessionId: string): Promise<any> {
+  return apiFetch("/voice_intake/finalize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+}

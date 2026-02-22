@@ -16,9 +16,14 @@ from . import db
 from .models.schemas import UserPreferences
 from .workflow.floorplan import process_floorplan
 from .workflow.pipeline import run_full_pipeline
+from .routes import session, tools, voice, voice_intake
 
 app = FastAPI(title="HomeDesigner", version="0.1.0")
 
+# CORS: Allow all origins for hackathon sprint.
+# - Frontend dev on any port (localhost:3000, 3001, etc.)
+# - ElevenLabs realtime WebSocket tool calls to backend endpoints
+# - Production deployments should restrict to specific origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,6 +31,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(session.router)
+app.include_router(tools.router)
+app.include_router(voice.router)
+app.include_router(voice_intake.router)
 
 
 # ---------------------------------------------------------------------------

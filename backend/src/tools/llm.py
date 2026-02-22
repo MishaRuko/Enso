@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 _client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY,
+    api_key=OPENROUTER_API_KEY or "no-key-configured",
     timeout=120.0,
 )
 

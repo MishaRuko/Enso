@@ -376,13 +376,15 @@ def _add_coordinate_grid(
     cz = target_length / 2
 
     # World-to-pixel mapping for orthographic top-down view
-    # Camera at (cx, 25, cz) looking straight down, up vector resolves to -Z
-    # Camera-space: right = +X, up = -Z
+    # Camera at (cx, 25, cz) looking straight down with default up=(0,1,0).
+    # Three.js resolves the degenerate lookAt so that:
+    #   camera right = +X (screen-right = world east)
+    #   camera up ≈ (0, 0, -1) (screen-up = world south, i.e. Z+ goes DOWN)
     # So: px = (wx - cx) / (frust*aspect/2) * W/2 + W/2
-    #     py = (wz - cz) / (frust/2) * H/2 + H/2  (Z+ is toward image bottom)
+    #     py = (wz - cz) / (frust/2) * H/2 + H/2  (Z+ toward image bottom)
     def world_to_px(wx: float, wz: float) -> tuple[int, int]:
         px = (wx - cx) / (frust * aspect / 2) * (W / 2) + W / 2
-        py = -(wz - cz) / (frust / 2) * (H / 2) + H / 2
+        py = (wz - cz) / (frust / 2) * (H / 2) + H / 2
         return int(px), int(py)
 
     draw = ImageDraw.Draw(img, "RGBA")
@@ -412,15 +414,14 @@ def _add_coordinate_grid(
     label_bg = (255, 255, 255, 200)
     label_fg = (30, 30, 30)
 
-    # X axis labels along the bottom
+    # X axis labels along the south wall (z=0, top of image)
     for x in range(max_x + 1):
-        px, py_bottom = world_to_px(x, 0)
-        # Label below the grid
+        px, py_top = world_to_px(x, 0)
         text = f"{x}m"
-        draw.rectangle([(px - 14, py_bottom + 2), (px + 14, py_bottom + 18)], fill=label_bg)
-        draw.text((px - 10, py_bottom + 3), text, fill=label_fg, font=font_small)
+        draw.rectangle([(px - 14, py_top - 18), (px + 14, py_top - 2)], fill=label_bg)
+        draw.text((px - 10, py_top - 17), text, fill=label_fg, font=font_small)
 
-    # Z axis labels along the left
+    # Z axis labels along the west wall (x=0, left of image), top-to-bottom = south-to-north
     for z in range(max_z + 1):
         px_left, py = world_to_px(0, z)
         text = f"{z}m"

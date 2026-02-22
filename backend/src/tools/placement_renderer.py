@@ -6,6 +6,7 @@ and each placed furniture item as a labeled rectangle at its position.
 
 import base64
 import io
+import math
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -51,7 +52,7 @@ def render_placement_png(
     # Room outline
     draw.rectangle([_PAD, _PAD, _PAD + rw, _PAD + rl], fill="#f5f0eb", outline="#2e2e38", width=2)
 
-    # Axis labels
+    # Axis labels and tick marks (apartment-absolute coordinates)
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
         font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 8)
@@ -59,8 +60,27 @@ def render_placement_png(
         font = ImageFont.load_default()
         font_sm = font
 
-    draw.text((_PAD + rw / 2, _PAD - 18), f"X → {room.width_m}m", fill="#666", anchor="mm", font=font)
-    draw.text((_PAD - 18, _PAD + rl / 2), f"Z → {room.length_m}m", fill="#666", anchor="mm", font=font)
+    x_off = room.x_offset_m if hasattr(room, "x_offset_m") else 0
+    z_off = room.z_offset_m if hasattr(room, "z_offset_m") else 0
+
+    draw.text((_PAD + rw / 2, _PAD - 22), f"X ({x_off:.1f}–{x_off + room.width_m:.1f}m)", fill="#666", anchor="mm", font=font)
+    draw.text((_PAD - 22, _PAD + rl / 2), f"Z ({z_off:.1f}–{z_off + room.length_m:.1f}m)", fill="#666", anchor="mm", font=font)
+
+    # X-axis tick marks every 1m (apartment-absolute values)
+    x_start = math.ceil(x_off)
+    x_end_val = math.floor(x_off + room.width_m)
+    for xm in range(x_start, x_end_val + 1):
+        px = _PAD + (xm - x_off) * _PX_PER_M
+        draw.line([(px, _PAD), (px, _PAD + 6)], fill="#999", width=1)
+        draw.text((px, _PAD - 8), f"{xm}", fill="#999", anchor="mm", font=font_sm)
+
+    # Z-axis tick marks every 1m (apartment-absolute values)
+    z_start = math.ceil(z_off)
+    z_end_val = math.floor(z_off + room.length_m)
+    for zm in range(z_start, z_end_val + 1):
+        py = _PAD + (zm - z_off) * _PX_PER_M
+        draw.line([(_PAD, py), (_PAD + 6, py)], fill="#999", width=1)
+        draw.text((_PAD - 8, py), f"{zm}", fill="#999", anchor="rm", font=font_sm)
 
     # Doors
     for door in room.doors:
@@ -93,8 +113,6 @@ def render_placement_png(
             draw.rectangle([_PAD + rw - 3, _PAD + pos, _PAD + rw, _PAD + pos + ww], fill=blue)
 
     # Furniture (convert absolute coords to room-relative for rendering)
-    x_off = room.x_offset_m if hasattr(room, "x_offset_m") else 0
-    z_off = room.z_offset_m if hasattr(room, "z_offset_m") else 0
     for i, p in enumerate(placements):
         dims = dims_map.get(p.item_id)
         name = names_map.get(p.item_id, p.name)
