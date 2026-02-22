@@ -281,7 +281,7 @@ async def update_placements(session_id: str, body: PlacementResult):
 
 @app.post("/api/sessions/{session_id}/place")
 async def start_placement(session_id: str):
-    from .workflow.placement import place_furniture
+    from .workflow.placement_gurobi import place_furniture_gurobi
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -289,19 +289,28 @@ async def start_placement(session_id: str):
     job = db.create_job(session_id, phase="placement")
 
     async def _run():
-        logger = logging.getLogger("placement_task")
+        _logger = logging.getLogger("placement_task")
         try:
-            logger.info("Starting placement for %s", session_id)
-            await place_furniture(session_id, job["id"])
-            db.update_session(session_id, {"status": "complete"})
-            logger.info("Placement complete for %s", session_id)
+            _logger.info("Starting Gurobi placement for %s", session_id)
+            await place_furniture_gurobi(session_id, job["id"])
+            _logger.info("Placement complete for %s", session_id)
         except Exception:
-            logger.exception("Placement failed for %s", session_id)
-            db.update_session(session_id, {"status": "placing_failed"})
+            _logger.exception("Placement failed for %s", session_id)
 
     task = asyncio.create_task(_run())
     task.add_done_callback(lambda t: t.result() if not t.cancelled() and not t.exception() else None)
     return {"job_id": job["id"]}
+
+
+@app.get("/api/sessions/{session_id}/grid")
+async def get_grid(session_id: str):
+    """Get or generate the FloorPlanGrid for a session."""
+    from .workflow.placement_gurobi import _get_or_create_grid
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    grid = await _get_or_create_grid(session_id, session)
+    return grid.to_dict()
 
 
 @app.post("/api/sessions/{session_id}/pipeline")

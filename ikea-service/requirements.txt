@@ -1,0 +1,7 @@
+ikea_api[all]
+fastapi
+uvicorn[standard]
+qdrant-client
+sentence-transformers
+boto3
+python-dotenv

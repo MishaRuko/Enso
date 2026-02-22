@@ -6,7 +6,10 @@ import os
 
 import fal_client
 
-from ..config import FAL_KEY, HUNYUAN_MODEL, TRELLIS_MODEL
+try:
+    from ..config import FAL_KEY, HUNYUAN_MODEL, TRELLIS_MODEL, TRELLIS_MULTI_MODEL
+except ImportError:
+    from config import FAL_KEY, HUNYUAN_MODEL, TRELLIS_MODEL, TRELLIS_MULTI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +81,7 @@ async def generate_3d_model(
     image_url: str,
     model: str = "trellis-2",
 ) -> str:
-    """Generate a 3D GLB model from an image URL (for furniture objects).
+    """Generate a 3D GLB model from a single image URL (for furniture objects).
 
     Args:
         image_url: Publicly-accessible URL of the source image.
@@ -118,4 +121,45 @@ async def generate_3d_model(
         raise ValueError(f"Unexpected fal.ai response keys: {list(result.keys())}")
 
     logger.info("fal.ai: GLB ready at %s", glb_url)
+    return glb_url
+
+
+async def generate_3d_model_multi_view(image_urls: list[str]) -> str:
+    """Generate a 3D GLB model from multiple product images using Trellis v2 multi-view.
+
+    Uses fal-ai/trellis-2/multi which accepts multiple viewpoints of the same
+    object to produce a higher-quality 3D reconstruction.
+
+    Args:
+        image_urls: List of publicly-accessible image URLs (different views of
+            the same product). At least 1, ideally 2-4 images.
+
+    Returns:
+        Public URL of the generated GLB file.
+    """
+    if not image_urls:
+        raise ValueError("At least one image URL is required")
+
+    # Single image — fall back to standard endpoint
+    if len(image_urls) == 1:
+        return await generate_3d_model(image_urls[0])
+
+    arguments = {
+        "image_urls": image_urls,
+        "resolution": 1024,
+        "texture_size": 2048,
+    }
+
+    logger.info(
+        "fal.ai: generating multi-view 3D model with %s from %d images",
+        TRELLIS_MULTI_MODEL, len(image_urls),
+    )
+
+    result = await fal_client.subscribe_async(
+        TRELLIS_MULTI_MODEL,
+        arguments=arguments,
+    )
+
+    glb_url = result["model_glb"]["url"]
+    logger.info("fal.ai: multi-view GLB ready at %s", glb_url)
     return glb_url
