@@ -422,6 +422,23 @@ def is_cancelled(session_id: str) -> bool:
     return event.is_set() if event else False
 
 
+@app.post("/api/sessions/{session_id}/checkout")
+async def checkout(session_id: str):
+    from .workflow.checkout import create_checkout
+
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        url = await create_checkout(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.getLogger("checkout").exception("Checkout failed for %s", session_id)
+        raise HTTPException(status_code=502, detail="Stripe checkout failed")
+    return {"payment_link": url}
+
+
 @app.post("/api/sessions/{session_id}/cancel")
 async def cancel_session(session_id: str):
     session = db.get_session(session_id)

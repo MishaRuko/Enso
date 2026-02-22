@@ -17,6 +17,7 @@ MIRO_TEMPLATE_BOARD_ID = os.getenv("MIRO_TEMPLATE_BOARD_ID", "")
 MIRO_MCP_ENABLED = os.getenv("MIRO_MCP_ENABLED", "true").lower() == "true"
 MIRO_MCP_PACKAGE = os.getenv("MIRO_MCP_PACKAGE", "@evalstate/mcp-miro")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 
 # --- OpenRouter Models ---
 CLAUDE_MODEL = "anthropic/claude-opus-4.6"
