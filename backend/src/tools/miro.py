@@ -483,7 +483,8 @@ def _place_image_at(
         logger.warning("Image POST exception: %s", exc)
         return False
 
-    # Step 2: PATCH to enforce exact widget dimensions
+    # Step 2: PATCH to enforce position + exact widget dimensions.
+    # Miro sometimes ignores position from the multipart POST, so we set it here.
     patch_headers = {
         "Authorization": auth_token,
         "Content-Type": "application/json",
@@ -493,7 +494,10 @@ def _place_image_at(
         p = client.patch(
             f"{_MIRO_API_BASE}/boards/{board_id}/images/{item_id}",
             headers=patch_headers,
-            json={"geometry": {"width": target_w, "height": target_h}},
+            json={
+                "geometry": {"width": target_w, "height": target_h},
+                "position": {"x": cx, "y": cy, "origin": "center"},
+            },
         )
         if not p.is_success:
             logger.warning("Image PATCH %s: %s", p.status_code, p.text[:150])

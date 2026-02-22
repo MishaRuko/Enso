@@ -39,16 +39,20 @@ _MAX_TURNS     = 25  # hard cap per pass
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Image slots: (x, y) = board centre coordinates; width in px; rotation in °
+# Arranged in a 3-column grid. At 3:2 aspect ratio, each image height ≈ width * 0.67.
+# hero (440px) → h≈293  medium (300px) → h≈200  small (180px) → h≈120
+# Column centres: left=-560, centre=0, right=+560
+# Row centres:    top=-320, middle=0, bottom=+340
 _GRID_SLOTS: dict[str, dict] = {
-    "hero":     {"x":    0, "y":    0, "width": 440, "rotation": 0},
-    "medium_1": {"x":  490, "y": -145, "width": 300, "rotation": 0},
-    "medium_2": {"x":  480, "y":  185, "width": 275, "rotation": 0},
-    "medium_3": {"x": -490, "y": -155, "width": 285, "rotation": 0},
-    "medium_4": {"x": -480, "y":  170, "width": 260, "rotation": 0},
-    "small_1":  {"x":  130, "y": -395, "width": 180, "rotation": 0},
-    "small_2":  {"x":  755, "y":   20, "width": 155, "rotation": 0},
-    "small_3":  {"x": -130, "y":  390, "width": 170, "rotation": 0},
-    "small_4":  {"x": -750, "y":   15, "width": 155, "rotation": 0},
+    "hero":     {"x":    0, "y":    0, "width": 440, "rotation": 0},   # centre, middle
+    "medium_1": {"x":  560, "y": -220, "width": 300, "rotation": 0},   # right, upper
+    "medium_2": {"x":  560, "y":  220, "width": 300, "rotation": 0},   # right, lower
+    "medium_3": {"x": -560, "y": -220, "width": 300, "rotation": 0},   # left, upper
+    "medium_4": {"x": -560, "y":  220, "width": 300, "rotation": 0},   # left, lower
+    "small_1":  {"x":  190, "y": -360, "width": 200, "rotation": 0},   # centre-right, top
+    "small_2":  {"x":  850, "y":    0, "width": 170, "rotation": 0},   # far right, middle
+    "small_3":  {"x": -190, "y":  360, "width": 200, "rotation": 0},   # centre-left, bottom
+    "small_4":  {"x": -850, "y":    0, "width": 170, "rotation": 0},   # far left, middle
 }
 
 # Sticky slots: fixed position and colour per brief field label
@@ -63,7 +67,6 @@ _STICKY_SLOTS: dict[str, dict] = {
     "CONSTRAINTS": {"x":  1100, "y":  360, "color": "gray"},
 }
 
-_SUMMARY_POS = {"x": 0, "y": 570, "width": 560}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,16 +185,8 @@ _PASS1_TOOLS: list[dict] = [
                             "required": ["label", "value"],
                         },
                     },
-                    "summary": {
-                        "type": "object",
-                        "description": "Moodboard summary text block placed below the images",
-                        "properties": {
-                            "content": {"type": "string", "description": "3–4 evocative sentences describing the vision"},
-                        },
-                        "required": ["content"],
-                    },
                 },
-                "required": ["board_name", "images", "stickies", "summary"],
+                "required": ["board_name", "images", "stickies"],
             },
         },
     },
@@ -330,11 +325,15 @@ def _tool_place_image(
         return {"ok": False, "error": r.text[:200]}
     item_id = r.json()["id"]
 
-    # Step 2: PATCH width only — Miro locks aspect ratio automatically
+    # Step 2: PATCH position + width. Miro sometimes ignores position from the
+    # multipart POST; PATCHing it explicitly guarantees the correct placement.
     p = httpx.patch(
         f"{_MIRO_API_BASE}/boards/{board_id}/images/{item_id}",
         headers={"Authorization": _auth(), "Content-Type": "application/json", "Accept": "application/json"},
-        json={"geometry": {"width": width}},
+        json={
+            "geometry": {"width": width},
+            "position": {"x": x, "y": y, "origin": "center"},
+        },
         timeout=15.0,
     )
     if not p.is_success:
@@ -460,9 +459,7 @@ WORKFLOW — follow every step exactly:
    STYLE, VIBE, AVOID, NOTES, BUDGET, ROOMS, MUST HAVES, CONSTRAINTS
    Draw values directly from the brief. If a field has no value, write "—".
 
-4. SUMMARY — write 3–4 evocative sentences capturing the overall aesthetic vision.
-
-5. SUBMIT — call submit_layout_plan ONCE with the complete plan.
+4. SUBMIT — call submit_layout_plan ONCE with the complete plan.
    After the call, output nothing else.
 
 RULES:
@@ -639,16 +636,6 @@ def _apply_layout_plan(
         )
         if result.get("ok"):
             sticky_placements[s["label"]] = result["item_id"]
-
-    summary = plan.get("summary", {})
-    if summary.get("content"):
-        _tool_text_block(
-            board_id,
-            summary["content"],
-            float(_SUMMARY_POS["x"]),
-            float(_SUMMARY_POS["y"]),
-            int(_SUMMARY_POS["width"]),
-        )
 
     logger.info(
         "Plan applied: %d images, %d stickies on %s",
