@@ -4,7 +4,7 @@ Usage:
     cd backend/src
     python -m furniture_placement.test_agents
 
-    # With a real grid from the analyzer (needs grid_data.json from test_analyzer):
+    # With a real grid from JSON:
     python -m furniture_placement.test_agents --from-grid output/grid_data.json
 
 Requires OPENROUTER_API_KEY in backend/.env.

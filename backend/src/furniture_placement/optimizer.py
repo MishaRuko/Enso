@@ -29,8 +29,8 @@ DEFAULT_WEIGHTS = {
 }
 
 # Default Gurobi parameters
-DEFAULT_TIME_LIMIT = 300  # seconds
-DEFAULT_MIP_GAP = 0.02
+DEFAULT_TIME_LIMIT = 30   # seconds (solutions are near-optimal within 30s)
+DEFAULT_MIP_GAP = 0.10    # accept 10% gap (visually indistinguishable)
 DEFAULT_THREADS = 4
 
 
@@ -63,6 +63,7 @@ class PlacedFurniture:
     mu: int            # orientation variable 2
     size_i: int        # rows occupied (depends on orientation)
     size_j: int        # columns occupied
+    height: float = 0  # height in metres (passed through from FurnitureSpec)
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +222,7 @@ class FurniturePlacementModel:
         self.furniture_parallel_size = []
         self.furniture_vertical_size = []
         self.furniture_area_list = []
+        self.furniture_height_list = []  # metres, passed through to PlacedFurniture
 
         for room_name in self.room_name_list:
             items = furniture.get(room_name, [])
@@ -228,15 +230,17 @@ class FurniturePlacementModel:
             names = [f.name for f in items]
             self.furniture_name_list.append(names)
 
-            p_list, v_list, area_list = [], [], []
+            p_list, v_list, area_list, h_list = [], [], [], []
             for f in items:
                 # parallel = width (short side), vertical = length (long side)
                 p_list.append(int(f.width))
                 v_list.append(int(f.length))
                 area_list.append(int(f.length) * int(f.width))
+                h_list.append(f.height)
             self.furniture_parallel_size.append(p_list)
             self.furniture_vertical_size.append(v_list)
             self.furniture_area_list.append(area_list)
+            self.furniture_height_list.append(h_list)
 
         self.furniture_indices = [
             (k, l)
@@ -303,6 +307,7 @@ class FurniturePlacementModel:
     def _add_constraints(self):
         """Add all furniture constraints."""
         self._add_containment_constraints()
+        self._add_door_clearance_constraints()
         self._add_basic_constraints()
         self._add_boundary_constraints()
         self._add_relation_constraints()
@@ -317,6 +322,76 @@ class FurniturePlacementModel:
                     for l in range(self.furniture_num_list[k]):
                         self.model.addConstr(self.furniture_grid[k, l, i, j] == 0)
                 # If room_val == 1, furniture CAN be here (no constraint needed)
+
+    def _add_door_clearance_constraints(self):
+        """Keep furniture out of cells near doors so doorways stay accessible."""
+        if not self.grid.doors:
+            return
+
+        cell = self.grid.cell_size
+        blocked: set[tuple[int, int]] = set()
+
+        for door in self.grid.doors:
+            wall = door.wall.lower()
+            pos_cells = int(door.position_along_wall_m / cell)
+            width_cells = max(1, int(round(door.width_m / cell)))
+            room_cells = self.grid.room_cells.get(door.room_name, set())
+
+            # For each column (or row) spanned by the door width, find the
+            # first DOOR_SIZE_CELLS room cells moving inward from the wall.
+            for offset in range(width_cells + 1):
+                if wall == "north":
+                    j = min(pos_cells + offset, self.grid.width - 1)
+                    # Scan southward (increasing i) to find room cells near the north wall
+                    count = 0
+                    for ci in range(self.grid.height):
+                        if (ci, j) in room_cells:
+                            blocked.add((ci, j))
+                            count += 1
+                            if count >= DOOR_SIZE_CELLS:
+                                break
+                elif wall == "south":
+                    j = min(pos_cells + offset, self.grid.width - 1)
+                    # Scan northward (decreasing i) to find room cells near the south wall
+                    count = 0
+                    for ci in range(self.grid.height - 1, -1, -1):
+                        if (ci, j) in room_cells:
+                            blocked.add((ci, j))
+                            count += 1
+                            if count >= DOOR_SIZE_CELLS:
+                                break
+                elif wall == "west":
+                    i = min(pos_cells + offset, self.grid.height - 1)
+                    # Scan eastward (increasing j)
+                    count = 0
+                    for cj in range(self.grid.width):
+                        if (i, cj) in room_cells:
+                            blocked.add((i, cj))
+                            count += 1
+                            if count >= DOOR_SIZE_CELLS:
+                                break
+                elif wall == "east":
+                    i = min(pos_cells + offset, self.grid.height - 1)
+                    # Scan westward (decreasing j)
+                    count = 0
+                    for cj in range(self.grid.width - 1, -1, -1):
+                        if (i, cj) in room_cells:
+                            blocked.add((i, cj))
+                            count += 1
+                            if count >= DOOR_SIZE_CELLS:
+                                break
+
+        if blocked:
+            logger.info("Door clearance: blocking %d cells near %d doors",
+                        len(blocked), len(self.grid.doors))
+            for k in range(self.room_num):
+                for l in range(self.furniture_num_list[k]):
+                    for (i, j) in blocked:
+                        if (i, j) in self.valid_coordinates_set:
+                            self.model.addConstr(
+                                self.furniture_grid[k, l, i, j] == 0,
+                                name=f"door_clear_{k}_{l}_{i}_{j}",
+                            )
 
     def _add_basic_constraints(self):
         """Furniture area, shape (rectangle), and orientation constraints."""
@@ -385,12 +460,19 @@ class FurniturePlacementModel:
                     == self.furniture_vertical_size[k][l]
                 )
                 for (i, j) in self.valid_coordinates:
-                    # Neighbor not in room = wall
-                    neighbors = QuadExpr()
-                    neighbors += (1 - self.x[k, i - 1, j]) * self.sigma[k, l]
-                    neighbors += (1 - self.x[k, i + 1, j]) * self.sigma[k, l]
-                    neighbors += (1 - self.x[k, i, j - 1]) * (1 - self.sigma[k, l])
-                    neighbors += (1 - self.x[k, i, j + 1]) * (1 - self.sigma[k, l])
+                    # Neighbor not in room = wall. Since self.x returns fixed
+                    # constants (0 or 1), pre-compute which neighbors are walls
+                    # to avoid QuadExpr (keeps the model linear).
+                    wall_n = 1 - self.x[k, i - 1, j]  # 0 or 1
+                    wall_s = 1 - self.x[k, i + 1, j]
+                    wall_w = 1 - self.x[k, i, j - 1]
+                    wall_e = 1 - self.x[k, i, j + 1]
+
+                    # When sigma=1: long side along j, check i-direction walls
+                    # When sigma=0: long side along i, check j-direction walls
+                    neighbors = LinExpr()
+                    neighbors += (wall_n + wall_s) * self.sigma[k, l]
+                    neighbors += (wall_w + wall_e) * (1 - self.sigma[k, l])
                     self.model.addConstr(neighbors >= fb[i, j])
                     self.model.addConstr(fb[i, j] <= fg[k, l, i, j])
 
@@ -571,6 +653,7 @@ class FurniturePlacementModel:
                     mu=mu_val,
                     size_i=size_i,
                     size_j=size_j,
+                    height=self.furniture_height_list[k][l],
                 ))
                 logger.info(
                     "  Placed %s in %s at (%d, %d), size=%dx%d, sigma=%d, mu=%d",

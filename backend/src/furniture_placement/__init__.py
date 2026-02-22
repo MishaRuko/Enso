@@ -1,1 +1,12 @@
-"""Furniture placement pipeline — floor plan analysis, constraint generation, and Gurobi optimization."""
+from .grid_types import FloorPlanGrid, DoorInfo, WindowInfo, RoomPolygon
+from .optimizer import FurniturePlacementModel, FurnitureSpec, PlacedFurniture
+
+__all__ = [
+    "FloorPlanGrid",
+    "DoorInfo",
+    "WindowInfo",
+    "RoomPolygon",
+    "FurniturePlacementModel",
+    "FurnitureSpec",
+    "PlacedFurniture",
+]

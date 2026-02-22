@@ -20,6 +20,7 @@ GEMINI_IMAGE_MODEL = "google/gemini-3-pro-image-preview"
 
 # --- fal.ai Models ---
 TRELLIS_MODEL = "fal-ai/trellis-2"
+TRELLIS_MULTI_MODEL = "fal-ai/trellis-2/multi"
 HUNYUAN_MODEL = "fal-ai/hunyuan3d/v2"
 TRIPOSR_MODEL = "fal-ai/triposr"
 

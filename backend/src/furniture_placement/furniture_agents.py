@@ -9,6 +9,7 @@ reasoning about furniture selection and spatial constraint generation.
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
@@ -115,18 +116,24 @@ Analyze the rooms below and create a furniture list for each.
 
 ## Rules
 
-1. **Furniture count** scales with room area:
-   - ~6 m²: 2–3 items
-   - ~12 m²: 4–6 items
-   - ~24 m²: 7–10 items
+1. **Furnish every room with the key pieces** a professional interior \
+designer would select. Be selective — pick the most impactful items, not \
+every possible piece. Examples:
+   - **Living room** (max 6): sofa, coffee table, TV unit, armchair, \
+side table, floor lamp
+   - **Bedroom** (max 5): bed, wardrobe, bedside table, desk, desk chair
+   - **Kitchen** (max 4): dining table, chairs (count each separately), storage cabinet
+   - **Hallway/entry** (max 3): console table, shoe rack, coat stand
+   - **Study/office** (max 5): desk, office chair, bookshelf, floor lamp
+   These are guidelines — adapt to the room's actual size and shape. \
+Prioritise essential functional furniture over decorative items.
 
-2. **Total furniture footprint** must be ≤ 80% of the room's floor area.
+2. **Total furniture footprint** must be ≤ 70% of the room's floor area.
 
 3. All furniture is approximated as **rectangular**. Report the length (longer \
 side) and width (shorter side) in metres.
 
-4. Only include **floor-standing furniture** — no wall-hung shelves, rugs, or \
-small table-top items.
+4. Do NOT include wall-hung shelves, rugs, or small table-top items.
 
 5. **Identical pieces** must have unique numbered names: "chair1", "chair2", etc. \
 NOT a single "chairs" entry.
@@ -134,13 +141,10 @@ NOT a single "chairs" entry.
 6. **Skip rooms that don't need furniture**: bathrooms, WC, utility rooms, \
 laundry rooms. Include them in the output with an empty list.
 
-7. Hallways/corridors may get a console table, shoe rack, or coat stand if \
-space allows.
-
-8. The `search_query` should be a concise retail search string (e.g., \
+7. The `search_query` should be a concise retail search string (e.g., \
 "3-seat sofa grey fabric scandinavian") including style cues from user preferences.
 
-9. Set `priority` to "essential" for must-have items and "nice_to_have" for \
+8. Set `priority` to "essential" for must-have items and "nice_to_have" for \
 accent/decorative pieces.
 
 ## Output Format
@@ -205,6 +209,48 @@ def _format_preferences(preferences: dict | None) -> str:
     return "\n".join(parts) if parts else "No specific preferences provided."
 
 
+_MAX_ITEMS_PER_ROOM: dict[str, int] = {
+    "Living Room": 6,
+    "Kitchen": 4,
+    "Master Bedroom": 5,
+    "Bedroom": 5,
+    "Hallway": 3,
+    "Study": 5,
+    "Office": 5,
+}
+_DEFAULT_MAX_ITEMS = 5
+
+
+def _cap_items_per_room(
+    specs: dict[str, list[FurnitureItemSpec]],
+) -> dict[str, list[FurnitureItemSpec]]:
+    """Trim items per room to a hard cap. Keeps essentials first, then nice_to_have."""
+    for room_name, items in specs.items():
+        # Find the matching cap key (prefix match)
+        cap = _DEFAULT_MAX_ITEMS
+        for key, limit in _MAX_ITEMS_PER_ROOM.items():
+            if room_name.startswith(key) or room_name.lower().startswith(key.lower()):
+                cap = limit
+                break
+
+        if len(items) <= cap:
+            continue
+
+        # Sort: essential first, then nice_to_have, preserving original order within each group
+        essential = [i for i in items if i.priority == "essential"]
+        nice = [i for i in items if i.priority != "essential"]
+        ordered = essential + nice
+
+        dropped = ordered[cap:]
+        specs[room_name] = ordered[:cap]
+        logger.info(
+            "Capped %s: %d → %d items (dropped: %s)",
+            room_name, len(items), cap,
+            ", ".join(d.name for d in dropped),
+        )
+    return specs
+
+
 async def _generate_specs_impl(
     grid: FloorPlanGrid,
     preferences: dict | None,
@@ -245,6 +291,9 @@ async def _generate_specs_impl(
                 priority=item.get("priority", "essential"),
             ))
         result[room_name] = specs
+
+    # Enforce per-room item cap
+    result = _cap_items_per_room(result)
 
     # Log summary
     total = sum(len(v) for v in result.values())
@@ -470,15 +519,15 @@ def specs_to_optimizer_format(
 ) -> dict[str, list[FurnitureSpec]]:
     """Convert metric FurnitureItemSpec to grid-cell FurnitureSpec for optimizer.
 
-    Dimensions are divided by cell_size and rounded to the nearest integer
-    (minimum 1 cell).
+    Dimensions are divided by cell_size and rounded UP (ceil) so the grid
+    allocation always covers the full furniture dimensions.
     """
     result: dict[str, list[FurnitureSpec]] = {}
     for room_name, items in specs.items():
         opt_specs = []
         for item in items:
-            length_cells = max(1, round(item.length_m / cell_size))
-            width_cells = max(1, round(item.width_m / cell_size))
+            length_cells = max(1, math.ceil(item.length_m / cell_size))
+            width_cells = max(1, math.ceil(item.width_m / cell_size))
             # Ensure length >= width in grid cells too
             if width_cells > length_cells:
                 length_cells, width_cells = width_cells, length_cells

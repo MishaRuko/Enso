@@ -1,7 +1,9 @@
 "use client";
 
-import { Component, Suspense, type ReactNode } from "react";
+import { Component, Suspense, useRef, useEffect, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
+import { Box3, Vector3 } from "three";
+import type { Group } from "three";
 import type { FurnitureItem, FurniturePlacement } from "@/lib/types";
 
 interface FurnitureModelInnerProps {
@@ -11,15 +13,29 @@ interface FurnitureModelInnerProps {
 
 function GLBModel({ url, placement }: FurnitureModelInnerProps) {
   const { scene } = useGLTF(url);
+  const groupRef = useRef<Group>(null);
+
+  // After the model loads, adjust Y so the bottom sits on the floor.
+  // Different model sources (IKEA, Trellis, Hunyuan) use different origins,
+  // so we compute the bounding box and shift accordingly.
+  useEffect(() => {
+    if (!groupRef.current) return;
+    const box = new Box3().setFromObject(groupRef.current);
+    // Shift up so the bottom of the model sits on the floor
+    const yOffset = -box.min.y;
+    if (Math.abs(yOffset) > 0.001) {
+      groupRef.current.position.y = placement.position.y + yOffset;
+    }
+  }, [scene, placement.position.y]);
 
   return (
-    <primitive
-      object={scene.clone()}
+    <group
+      ref={groupRef}
       position={[placement.position.x, placement.position.y, placement.position.z]}
       rotation={[0, (placement.rotation_y_degrees * Math.PI) / 180, 0]}
-      castShadow
-      receiveShadow
-    />
+    >
+      <primitive object={scene.clone()} castShadow receiveShadow />
+    </group>
   );
 }
 

@@ -1,18 +1,18 @@
 """Gurobi-based furniture placement pipeline.
 
-Replaces the one-shot Gemini placement with:
-1. Floor plan → grid (vision LLM)
+Steps:
+1. Load FloorPlanGrid (must already exist in session)
 2. Furniture spec agent (Claude)
-3. Furniture constraint agent (Claude)
-4. Gurobi integer programming optimizer
-5. Grid → 3D coordinate conversion
+3. IKEA product search (direct pipeline call)
+4. Furniture constraint agent (Claude)
+5. Gurobi integer programming optimizer
+6. Grid → 3D coordinate conversion
 """
 
 import logging
 
 from .. import db
 from ..furniture_placement.coord_convert import convert_all_placements
-from ..furniture_placement.floorplan_analyzer import analyze_floorplan_from_url
 from ..furniture_placement.furniture_agents import (
     FurnitureItemSpec,
     constraints_to_optimizer_format,
@@ -24,61 +24,29 @@ from ..furniture_placement.furniture_agents import (
 )
 from ..furniture_placement.grid_types import FloorPlanGrid
 from ..furniture_placement.optimizer import FurniturePlacementModel
-from .floorplan import _to_data_url
+from ..tools.ikea.search import (
+    ikea_results_to_spec_updates,
+    search_ikea_products,
+)
 
 logger = logging.getLogger(__name__)
 
 
-async def _get_or_create_grid(
-    session_id: str,
-    session: dict,
-    job_id: str | None = None,
-) -> FloorPlanGrid:
-    """Load cached grid from session or create from floorplan image.
+def _get_grid(session_id: str, session: dict) -> FloorPlanGrid:
+    """Load FloorPlanGrid from session.
 
-    The grid is cached in session['grid_data'] to avoid re-running the
-    vision LLM on every placement request.
+    The grid must already exist in session['grid_data'].
+    Grid creation is handled externally (e.g. from room segmentation).
     """
-    # Try cached grid first
     grid_data = session.get("grid_data")
-    if grid_data and isinstance(grid_data, dict) and "room_cells" in grid_data:
-        logger.info("Using cached grid (%dx%d)", grid_data["width"], grid_data["height"])
-        return FloorPlanGrid.from_dict(grid_data)
+    if not grid_data or not isinstance(grid_data, dict) or "room_cells" not in grid_data:
+        raise ValueError(
+            f"Session {session_id} has no grid_data. "
+            "Upload a floorplan and run room segmentation first."
+        )
 
-    # Generate grid from floorplan image
-    floorplan_url = session.get("floorplan_url")
-    if not floorplan_url:
-        raise ValueError(f"Session {session_id} has no floorplan_url")
-
-    if job_id:
-        db.update_job(job_id, {"trace": [{"step": "grid_analysis"}]})
-
-    logger.info("Generating grid from floorplan for session %s", session_id)
-    image_url = await _to_data_url(floorplan_url)
-
-    # Estimate total area from existing room data if available
-    total_area = None
-    room_data = session.get("room_data")
-    if room_data and isinstance(room_data, dict):
-        rooms = room_data.get("rooms", [])
-        if rooms:
-            total_area = sum(r.get("area_sqm", 0) for r in rooms)
-            if total_area > 0:
-                logger.info("Using total area hint from room_data: %.1f m²", total_area)
-            else:
-                total_area = None
-
-    grid = await analyze_floorplan_from_url(
-        image_url,
-        total_area_sqm=total_area,
-        cell_size=1.0,
-    )
-
-    # Cache grid in session
-    db.update_session(session_id, {"grid_data": grid.to_dict()})
-    logger.info("Grid cached: %dx%d, %d rooms", grid.width, grid.height, grid.num_rooms)
-
-    return grid
+    logger.info("Using grid (%dx%d)", grid_data["width"], grid_data["height"])
+    return FloorPlanGrid.from_dict(grid_data)
 
 
 def _get_preferences(session: dict) -> dict | None:
@@ -114,11 +82,11 @@ async def place_furniture_gurobi(session_id: str, job_id: str) -> dict:
     Steps:
         1. Load or generate FloorPlanGrid
         2. Run Agent 7 (furniture specs)
-        3. Optionally update specs from existing furniture search results
-        4. Run Agent 8 (constraints)
-        5. Run Gurobi optimizer
-        6. Convert to 3D coordinates
-        7. Save placements to session
+        2b. Search IKEA for real products + GLB models (via ikea-service)
+        3. Run Agent 8 (constraints — using actual IKEA dimensions)
+        4. Run Gurobi optimizer
+        5. Convert to 3D + merge IKEA product data (GLB URLs, prices)
+        6. Save placements to session
 
     Args:
         session_id: Design session ID.
@@ -136,7 +104,7 @@ async def place_furniture_gurobi(session_id: str, job_id: str) -> dict:
 
         # --- Step 1: Get FloorPlanGrid ---
         db.update_session(session_id, {"status": "analyzing_grid"})
-        grid = await _get_or_create_grid(session_id, session, job_id)
+        grid = _get_grid(session_id, session)
 
         db.update_job(job_id, {"trace": [
             {"step": "started"},
@@ -157,13 +125,29 @@ async def place_furniture_gurobi(session_id: str, job_id: str) -> dict:
             {"step": "furniture_specs", "total_items": total_items},
         ]})
 
-        # --- Step 2b: Update specs from existing search results ---
-        existing_furniture = db.list_furniture(session_id)
-        if existing_furniture:
-            search_results = _furniture_items_to_search_results(existing_furniture)
-            if search_results:
-                logger.info("Updating specs from %d existing furniture items", len(search_results))
-                update_specs_from_search_results(specs, search_results)
+        # --- Step 2b: IKEA product search ---
+        ikea_results = []
+        try:
+            db.update_session(session_id, {"status": "searching_ikea"})
+            logger.info("Searching IKEA for %d items...", total_items)
+            ikea_results = await search_ikea_products(specs)
+
+            # Update our specs with actual IKEA dimensions
+            spec_updates = ikea_results_to_spec_updates(ikea_results)
+            if spec_updates:
+                logger.info("Updating %d specs with actual IKEA dimensions", len(spec_updates))
+                update_specs_from_search_results(specs, spec_updates)
+
+            found = sum(1 for r in ikea_results if r.get("found"))
+            db.update_job(job_id, {"trace": [
+                {"step": "started"},
+                {"step": "grid_ready"},
+                {"step": "furniture_specs"},
+                {"step": "ikea_search", "found": found, "total": len(ikea_results)},
+            ]})
+        except Exception as e:
+            logger.warning("IKEA search failed (continuing without): %s", e)
+            # Non-fatal — we can still optimize with estimated dimensions
 
         # --- Step 3: Constraint Agent ---
         db.update_session(session_id, {"status": "generating_constraints"})
@@ -208,25 +192,47 @@ async def place_furniture_gurobi(session_id: str, job_id: str) -> dict:
         if not placements:
             raise ValueError("Gurobi optimizer found no feasible solution")
 
-        # --- Step 5: Convert to 3D ---
+        # --- Step 5: Convert to 3D and merge IKEA data ---
         coords_3d = convert_all_placements(placements, grid)
 
-        # Build placements in the API format
+        # Index IKEA results by (room_name, item_name) for fast lookup
+        ikea_lookup = {}
+        for r in ikea_results:
+            if r.get("found"):
+                ikea_lookup[(r["room_name"], r["name"])] = r
+
+        # Build placements in the API format, merging IKEA product data
         api_placements = []
         for coord in coords_3d:
+            key = (coord["room_name"], coord["name"])
+            ikea = ikea_lookup.get(key, {})
+
             api_placements.append({
-                "item_id": coord["name"],  # use furniture name as ID
+                "item_id": ikea.get("ikea_item_code") or coord["name"],
                 "name": coord["name"],
+                "ikea_name": ikea.get("ikea_name", ""),
                 "position": coord["position"],
                 "rotation_y_degrees": coord["rotation_y_degrees"],
                 "reasoning": f"Gurobi-optimized placement in {coord['room_name']}",
                 "room_name": coord["room_name"],
                 "size_m": coord.get("size_m", {}),
+                "glb_url": ikea.get("glb_url", ""),
+                "image_url": ikea.get("image_url", ""),
+                "buy_url": ikea.get("buy_url", ""),
+                "price": ikea.get("price"),
+                "currency": ikea.get("currency", ""),
             })
+
+        # --- Step 5b: Generate 3D models for items without IKEA GLBs ---
+        try:
+            from ..tools.ikea.trellis_fallback import generate_missing_models
+            await generate_missing_models(api_placements, max_calls=3)
+        except Exception as e:
+            logger.warning("Trellis fallback failed (continuing without): %s", e)
 
         result = {"placements": api_placements}
 
-        # Generate search queries for the IKEA pipeline
+        # Generate search queries (for reference / re-search)
         search_queries = specs_to_search_queries(specs, preferences)
 
         # --- Step 6: Save ---
@@ -251,14 +257,16 @@ async def place_furniture_gurobi(session_id: str, job_id: str) -> dict:
             "status": "placement_ready",
         })
 
+        items_with_glb = sum(1 for p in api_placements if p.get("glb_url"))
         db.update_job(job_id, {
             "status": "completed",
             "trace": [
                 {"step": "started"},
                 {"step": "grid_ready"},
                 {"step": "furniture_specs"},
+                {"step": "ikea_search"},
                 {"step": "constraints_ready"},
-                {"step": "optimized", "items_placed": len(placements)},
+                {"step": "optimized", "items_placed": len(placements), "with_glb": items_with_glb},
                 {"step": "completed"},
             ],
         })
