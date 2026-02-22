@@ -70,3 +70,10 @@ backend/glb_cache/
 
 # Ruff cache
 .ruff_cache/
+
+# Test / example artifacts
+backend/test_output/
+backend/example_model/
+
+# Package lock (pnpm uses pnpm-lock.yaml)
+frontend/package-lock.json
