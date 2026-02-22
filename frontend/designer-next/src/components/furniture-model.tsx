@@ -1,8 +1,9 @@
 "use client";
 
-import { Component, Suspense, useMemo, type ReactNode } from "react";
+import { Component, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
 import { Box3, Vector3 } from "three";
+import type { ThreeEvent } from "@react-three/fiber";
 import type { FurnitureItem, FurniturePlacement } from "@/lib/types";
 
 interface FurnitureModelInnerProps {
@@ -16,7 +17,7 @@ function isIkeaGlb(item?: FurnitureItem): boolean {
   return url.includes("ikea.com") || url.includes("ikea-static");
 }
 
-function GLBModel({ url, placement, item }: FurnitureModelInnerProps) {
+function GLBModel({ url, item }: FurnitureModelInnerProps) {
   const { scene } = useGLTF(url);
 
   const cloned = useMemo(() => {
@@ -51,15 +52,7 @@ function GLBModel({ url, placement, item }: FurnitureModelInnerProps) {
     return c;
   }, [scene, item]);
 
-  return (
-    <primitive
-      object={cloned}
-      position={[placement.position.x, placement.position.y, placement.position.z]}
-      rotation={[0, (placement.rotation_y_degrees * Math.PI) / 180, 0]}
-      castShadow
-      receiveShadow
-    />
-  );
+  return <primitive object={cloned} castShadow receiveShadow />;
 }
 
 interface PlaceholderBoxProps {
@@ -67,17 +60,13 @@ interface PlaceholderBoxProps {
   item?: FurnitureItem;
 }
 
-function PlaceholderBox({ placement, item }: PlaceholderBoxProps) {
+function PlaceholderBox({ item }: PlaceholderBoxProps) {
   const w = item?.dimensions ? item.dimensions.width_cm / 100 : 0.5;
   const h = item?.dimensions ? item.dimensions.height_cm / 100 : 0.5;
   const d = item?.dimensions ? item.dimensions.depth_cm / 100 : 0.5;
 
   return (
-    <mesh
-      position={[placement.position.x, placement.position.y + h / 2, placement.position.z]}
-      rotation={[0, (placement.rotation_y_degrees * Math.PI) / 180, 0]}
-      castShadow
-    >
+    <mesh position={[0, h / 2, 0]} castShadow>
       <boxGeometry args={[w, h, d]} />
       <meshStandardMaterial color="#2e2e38" transparent opacity={0.35} />
     </mesh>
@@ -108,6 +97,8 @@ class GLBErrorBoundary extends Component<
 interface FurnitureModelProps {
   placement: FurniturePlacement;
   item?: FurnitureItem;
+  onDragStart?: (itemId: string, point: Vector3) => void;
+  selected?: boolean;
 }
 
 function proxyGlbUrl(url: string): string {
@@ -117,21 +108,55 @@ function proxyGlbUrl(url: string): string {
   return url;
 }
 
-export function FurnitureModel({ placement, item }: FurnitureModelProps) {
+export function FurnitureModel({ placement, item, onDragStart, selected }: FurnitureModelProps) {
   const rawUrl = item?.glb_url;
   const glbUrl = rawUrl ? proxyGlbUrl(rawUrl) : undefined;
+  const [hovered, setHovered] = useState(false);
 
-  if (!glbUrl) {
-    return <PlaceholderBox placement={placement} item={item} />;
-  }
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!onDragStart) return;
+    e.stopPropagation();
+    onDragStart(placement.item_id, e.point.clone());
+  };
+
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+    if (!onDragStart) return;
+    e.stopPropagation();
+    setHovered(true);
+    document.body.style.cursor = "grab";
+  };
+
+  const handlePointerOut = () => {
+    if (!onDragStart) return;
+    setHovered(false);
+    document.body.style.cursor = "auto";
+  };
 
   const fallback = <PlaceholderBox placement={placement} item={item} />;
 
   return (
-    <GLBErrorBoundary fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <GLBModel url={glbUrl} placement={placement} item={item} />
-      </Suspense>
-    </GLBErrorBoundary>
+    <group
+      position={[placement.position.x, placement.position.y, placement.position.z]}
+      rotation={[0, (placement.rotation_y_degrees * Math.PI) / 180, 0]}
+      onPointerDown={handlePointerDown}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
+    >
+      {(selected || hovered) && (
+        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.3, 0.45, 32]} />
+          <meshBasicMaterial color="#db504a" transparent opacity={selected ? 0.6 : 0.3} />
+        </mesh>
+      )}
+      {glbUrl ? (
+        <GLBErrorBoundary fallback={fallback}>
+          <Suspense fallback={fallback}>
+            <GLBModel url={glbUrl} placement={placement} item={item} />
+          </Suspense>
+        </GLBErrorBoundary>
+      ) : (
+        fallback
+      )}
+    </group>
   );
 }

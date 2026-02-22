@@ -1,19 +1,58 @@
 "use client";
 
 import { use, useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { usePolling } from "@/hooks/use-polling";
 import { RoomViewer, preloadRoomGlb } from "@/components/room-viewer";
 import { FurnitureSidebar } from "@/components/furniture-sidebar";
 import { FloorplanUpload } from "@/components/floorplan-upload";
 import { StatusBar } from "@/components/status-bar";
 import { EnsoSpinner } from "@/components/enso-logo";
-import { runPipeline, listSessionJobs } from "@/lib/backend";
-import type { DesignJob, TraceEvent } from "@/lib/types";
+import { createSession, runPipeline, listSessionJobs, savePlacements } from "@/lib/backend";
+import type { DesignJob, FurniturePlacement, TraceEvent } from "@/lib/types";
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const { session, error, refetch } = usePolling(id);
+
+  // If the session doesn't exist (404), create a new one and redirect
+  useEffect(() => {
+    if (error?.includes("404")) {
+      createSession().then(({ session_id }) => {
+        router.replace(`/session/${session_id}`);
+      });
+    }
+  }, [error, router]);
   const [pipelineStarting, setPipelineStarting] = useState(false);
+  const [localPlacements, setLocalPlacements] = useState<FurniturePlacement[] | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Sync local placements when session placements change (e.g. pipeline completes)
+  const serverPlacements = session?.placements?.placements;
+  useEffect(() => {
+    if (serverPlacements) {
+      setLocalPlacements(serverPlacements);
+    }
+  }, [serverPlacements]);
+
+  const hasUnsavedChanges =
+    localPlacements != null &&
+    serverPlacements != null &&
+    JSON.stringify(localPlacements) !== JSON.stringify(serverPlacements);
+
+  async function handleSaveLayout() {
+    if (!localPlacements) return;
+    setSaving(true);
+    try {
+      await savePlacements(id, { placements: localPlacements });
+      refetch();
+    } catch (err) {
+      console.error("Failed to save layout:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // Dynamic tab title based on pipeline phase
   const status = session?.status;
@@ -156,6 +195,63 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <StatusBar currentPhase={currentStatus} />
+
+      {session.miro_board_url && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            padding: "0.5rem 1.5rem",
+            background: "var(--surface)",
+            borderBottom: "1px solid var(--border)",
+            fontSize: "0.8125rem",
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          <span style={{ color: "var(--muted)", fontWeight: 600 }}>Vision Board</span>
+          <a
+            href={session.miro_board_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "var(--accent)",
+              textDecoration: "none",
+              fontWeight: 500,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.25rem",
+            }}
+          >
+            Open in Miro
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+          </a>
+        </div>
+      )}
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* Main content area */}
@@ -321,10 +417,31 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                 roomData={roomData}
                 roomGlbUrl={session.room_glb_url}
                 allRooms={rooms}
-                placements={placements}
+                placements={localPlacements ?? placements}
                 furnitureItems={session.furniture_list}
                 floorplanUrl={session.floorplan_url}
+                onPlacementChange={setLocalPlacements}
               />
+              {hasUnsavedChanges && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSaveLayout}
+                  disabled={saving}
+                  style={{
+                    position: "absolute",
+                    top: "1rem",
+                    right: "1rem",
+                    zIndex: 10,
+                    fontSize: "0.875rem",
+                    padding: "0.5rem 1.25rem",
+                    boxShadow: "0 4px 20px rgba(219,80,74,0.25)",
+                    animation: "fadeUp 0.3s ease-out",
+                  }}
+                >
+                  {saving ? "Saving..." : "Save Layout"}
+                </button>
+              )}
             </div>
           )}
 

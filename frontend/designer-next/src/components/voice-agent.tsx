@@ -1,26 +1,31 @@
 "use client";
 
 import { useConversation } from "@elevenlabs/react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { MoodBoardItem } from "./mood-board";
 
 interface VoiceAgentProps {
   agentId: string;
+  sessionId: string;
   onMoodBoardAdd: (item: MoodBoardItem) => void;
   onPreferenceUpdate: (key: string, value: unknown) => void;
   onRoomTypeSet: (type: string) => void;
+  onMiroBoardCreated: (url: string, boardId: string) => void;
   onComplete: () => void;
 }
 
 export default function VoiceAgent({
   agentId,
+  sessionId,
   onMoodBoardAdd,
   onPreferenceUpdate,
   onRoomTypeSet,
+  onMiroBoardCreated,
   onComplete,
 }: VoiceAgentProps) {
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
+  const miroBoardIdRef = useRef<string | null>(null);
 
   const conversation = useConversation({
     onConnect: () => {
@@ -47,7 +52,11 @@ export default function VoiceAgent({
         agentId,
         connectionType: "webrtc",
         clientTools: {
-          add_to_mood_board: (params: { imageUrl: string; category: string; description: string }) => {
+          add_to_mood_board: (params: {
+            imageUrl: string;
+            category: string;
+            description: string;
+          }) => {
             onMoodBoardAdd({
               imageUrl: params.imageUrl,
               category: params.category,
@@ -57,11 +66,37 @@ export default function VoiceAgent({
           },
           update_preference: (params: { key: string; value: unknown }) => {
             onPreferenceUpdate(params.key, params.value);
+            if (miroBoardIdRef.current) {
+              fetch(`/api/sessions/${sessionId}/miro/item`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  board_id: miroBoardIdRef.current,
+                  label: params.key,
+                  value: String(params.value),
+                }),
+              }).catch(() => {});
+            }
             return "Preference updated";
           },
           set_room_type: (params: { type: string }) => {
             onRoomTypeSet(params.type);
             return `Room type set to ${params.type}`;
+          },
+          create_vision_board: async () => {
+            try {
+              const res = await fetch(`/api/sessions/${sessionId}/miro`, {
+                method: "POST",
+              });
+              if (!res.ok) throw new Error(`Miro API ${res.status}`);
+              const data = await res.json();
+              const boardId = data.board_id as string;
+              miroBoardIdRef.current = boardId;
+              onMiroBoardCreated(data.miro_board_url as string, boardId);
+              return "Vision board created successfully";
+            } catch {
+              return "Vision board creation failed, continuing without it";
+            }
           },
           complete_consultation: () => {
             onComplete();
@@ -73,7 +108,16 @@ export default function VoiceAgent({
       const message = err instanceof Error ? err.message : "Failed to start conversation";
       setError(message);
     }
-  }, [agentId, conversation, onMoodBoardAdd, onPreferenceUpdate, onRoomTypeSet, onComplete]);
+  }, [
+    agentId,
+    sessionId,
+    conversation,
+    onMoodBoardAdd,
+    onPreferenceUpdate,
+    onRoomTypeSet,
+    onMiroBoardCreated,
+    onComplete,
+  ]);
 
   const handleStop = useCallback(async () => {
     try {

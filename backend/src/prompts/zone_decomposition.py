@@ -3,12 +3,14 @@
 import json
 
 from ..models.schemas import FurnitureItem, RoomData
+from ..tools.room_grid import generate_room_grid
 
 
 def zone_decomposition_prompt(
     room: RoomData,
     furniture: list[FurnitureItem],
     all_rooms: list[RoomData] | None = None,
+    cell_size: float = 0.5,
 ) -> str:
     furniture_info = []
     for f in furniture:
@@ -80,10 +82,22 @@ X axis: west → east. Z axis: south → north.
 Doors: {json.dumps([d.model_dump() for d in room.doors])}
 Windows: {json.dumps([w.model_dump() for w in room.windows])}{other_rooms_text}
 
+## Room Grid (each cell = {cell_size}m, apartment-absolute coordinates)
+```
+{generate_room_grid(room, all_rooms, cell_size=cell_size)}
+```
+
 ## Furniture to Assign
 ```json
 {json.dumps(furniture_info, indent=2)}
 ```
+
+## IMPORTANT: Visualization-of-Thought
+Before outputting JSON, you MUST first draw the grid and mark your proposed zones on it.
+Use 2-3 letter zone abbreviations (e.g., LV=living, SL=sleeping, WK=work, DN=dining, ST=storage).
+Fill each zone's cells with its abbreviation to visualize the spatial layout.
+Then verify that zones don't overlap, cover all furniture needs, and leave walkways.
+Finally, output the JSON zone definitions.
 
 ## Instructions
 1. Study the images to identify the PHYSICAL floor boundary (not the bounding box).
@@ -101,7 +115,8 @@ Windows: {json.dumps([w.model_dump() for w in room.windows])}{other_rooms_text}
 7. Ensure zone polygons do NOT overlap each other or other rooms.
 
 ## Output
-Return ONLY valid JSON (no markdown fences):
+First draw the grid with your zone assignments (see Visualization-of-Thought above).
+Then return valid JSON (no markdown fences):
 {{
   "zones": [
     {{

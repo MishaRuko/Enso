@@ -9,6 +9,7 @@ import time
 import httpx
 
 from .. import db
+from ..config import GEMINI_MODEL
 from ..models.schemas import FloorplanAnalysis
 from ..prompts.floorplan_analysis import floorplan_analysis_prompt
 from ..tools.fal_client import generate_room_model, upload_data_url_to_fal
@@ -105,7 +106,7 @@ async def process_floorplan(session_id: str) -> FloorplanAnalysis:
             input_prompt=prompt,
             input_image=floorplan_url,
             output_text=raw_response[:4000],
-            model="google/gemini-2.5-pro-preview",
+            model=GEMINI_MODEL,
         ))
         db.update_job(job_id, {"trace": trace})
 

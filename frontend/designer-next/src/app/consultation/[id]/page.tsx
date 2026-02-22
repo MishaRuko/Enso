@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 const VoiceAgent = dynamic(() => import("@/components/voice-agent"), { ssr: false });
 import TextIntake from "@/components/text-intake";
 import MoodBoard from "@/components/mood-board";
+import MiroEmbed from "@/components/miro-embed";
 import type { MoodBoardItem } from "@/components/mood-board";
 import PreferenceTags from "@/components/preference-tags";
 import type { UserPreferences } from "@/lib/types";
@@ -24,7 +25,8 @@ export default function ConsultationPage() {
   const [moodItems, setMoodItems] = useState<MoodBoardItem[]>([]);
   const [preferences, setPreferences] = useState<Partial<UserPreferences>>({});
   const [saving, setSaving] = useState(false);
-  const [briefSummary, setBriefSummary] = useState<Record<string, any>>({});
+  const [_briefSummary, setBriefSummary] = useState<Record<string, any>>({});
+  const [miroBoardUrl, setMiroBoardUrl] = useState<string | null>(null);
 
   const handleMoodBoardAdd = useCallback((item: MoodBoardItem) => {
     setMoodItems((prev) => [...prev, item]);
@@ -55,12 +57,15 @@ export default function ConsultationPage() {
     setBriefSummary(brief);
   }, []);
 
+  const handleMiroBoardCreated = useCallback((url: string, _boardId: string) => {
+    setMiroBoardUrl(url);
+  }, []);
+
   const handleIntakeComplete = useCallback(
-    (miroUrl: string) => {
-      // Navigate to session page with miro_board_url in state
+    (_miroUrl: string) => {
       router.push(`/session/${sessionId}`);
     },
-    [sessionId, router]
+    [sessionId, router],
   );
 
   const handleComplete = useCallback(async () => {
@@ -84,7 +89,9 @@ export default function ConsultationPage() {
   // In text mode, show full-width text intake; in voice mode, show two-column layout
   if (textMode) {
     return (
-      <main style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+      <main
+        style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}
+      >
         <section style={{ flex: 1, overflow: "auto", padding: "1.5rem 2rem" }}>
           <div style={{ maxWidth: "800px", margin: "0 auto" }}>
             <div style={{ marginBottom: "2rem" }}>
@@ -221,9 +228,11 @@ export default function ConsultationPage() {
         <div style={{ flex: 1, minHeight: 0 }}>
           <VoiceAgent
             agentId={AGENT_ID}
+            sessionId={sessionId}
             onMoodBoardAdd={handleMoodBoardAdd}
             onPreferenceUpdate={handlePreferenceUpdate}
             onRoomTypeSet={handleRoomTypeSet}
+            onMiroBoardCreated={handleMiroBoardCreated}
             onComplete={handleComplete}
           />
         </div>
@@ -296,7 +305,9 @@ export default function ConsultationPage() {
           animation: "fadeIn 0.5s ease-out 0.2s both",
         }}
       >
-        <div>
+        <div
+          style={{ flex: miroBoardUrl ? 1 : undefined, minHeight: miroBoardUrl ? 0 : undefined }}
+        >
           <div
             style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}
           >
@@ -313,9 +324,15 @@ export default function ConsultationPage() {
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21 15 16 10 5 21" />
             </svg>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>Mood Board</h2>
+            <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>
+              {miroBoardUrl ? "Vision Board" : "Mood Board"}
+            </h2>
           </div>
-          <MoodBoard items={moodItems} />
+          {miroBoardUrl ? (
+            <MiroEmbed boardUrl={miroBoardUrl} height="100%" />
+          ) : (
+            <MoodBoard items={moodItems} />
+          )}
         </div>
 
         <div

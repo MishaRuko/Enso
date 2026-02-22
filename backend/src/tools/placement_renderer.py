@@ -141,7 +141,8 @@ def render_placement_png(
         draw.text((cx, cy), label, fill="#2e2e38", anchor="mm", font=font_sm)
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img = img.convert("RGB")
+    img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
 
@@ -204,7 +205,8 @@ def _render_front_elevation(
         draw.text((cx, y_top + fh / 2), name[:15], fill="#2e2e38", anchor="mm", font=font_sm)
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img = img.convert("RGB")
+    img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
 
@@ -265,7 +267,8 @@ def _render_side_elevation(
         draw.text((cz, y_top + fh / 2), name[:15], fill="#2e2e38", anchor="mm", font=font_sm)
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img = img.convert("RGB")
+    img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
 
 
@@ -274,13 +277,13 @@ def render_placement_views(
     placements: list[FurniturePlacement],
     furniture: list[FurnitureItem],
 ) -> list[str]:
-    """Render 3 views (top-down, front, side) and return as PNG data-URL list."""
+    """Render 3 views (top-down, front, side) and return as JPEG data-URL list."""
     views = [
         render_placement_png(room, placements, furniture),
         _render_front_elevation(room, placements, furniture),
         _render_side_elevation(room, placements, furniture),
     ]
-    return [f"data:image/png;base64,{base64.b64encode(v).decode()}" for v in views]
+    return [f"data:image/jpeg;base64,{base64.b64encode(v).decode()}" for v in views]
 
 
 def render_placement_data_url(
@@ -288,7 +291,7 @@ def render_placement_data_url(
     placements: list[FurniturePlacement],
     furniture: list[FurnitureItem],
 ) -> str:
-    """Render placement diagram and return as PNG data-URL."""
-    png_bytes = render_placement_png(room, placements, furniture)
-    b64 = base64.b64encode(png_bytes).decode()
-    return f"data:image/png;base64,{b64}"
+    """Render placement diagram and return as JPEG data-URL."""
+    jpeg_bytes = render_placement_png(room, placements, furniture)
+    b64 = base64.b64encode(jpeg_bytes).decode()
+    return f"data:image/jpeg;base64,{b64}"

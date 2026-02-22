@@ -38,3 +38,8 @@ class PlacementVerificationResult(BaseModel):
         description="Overall quality score (0=terrible, 1=perfect)",
     )
     summary: str = Field(description="Brief summary of the verification findings")
+
+
+class VerifyAndFixResult(BaseModel):
+    evaluation: PlacementVerificationResult
+    placements: list = Field(description="Corrected placements (or original if score >= threshold)")

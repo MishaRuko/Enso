@@ -1,10 +1,19 @@
 "use client";
 
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Component,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Canvas, useThree, useLoader } from "@react-three/fiber";
 import { OrbitControls, Environment, Grid, ContactShadows, useGLTF } from "@react-three/drei";
 import type * as THREE from "three";
-import { Box3, Color, MeshStandardMaterial, Plane, Vector3 } from "three";
+import { Box3, Color, MeshStandardMaterial, Plane, Raycaster, Vector2, Vector3 } from "three";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { EnsoSpinner } from "@/components/enso-logo";
 import { ProceduralRoom } from "@/components/procedural-room";
@@ -54,6 +63,7 @@ interface RoomViewerProps {
   placements?: FurniturePlacement[];
   furnitureItems?: FurnitureItem[];
   floorplanUrl?: string | null;
+  onPlacementChange?: (placements: FurniturePlacement[]) => void;
 }
 
 /**
@@ -238,7 +248,72 @@ function SceneBackground() {
   return null;
 }
 
+// --- Drag logic ---
 
+interface DragState {
+  itemId: string;
+  offsetX: number;
+  offsetZ: number;
+}
+
+function DragPlane({
+  dragState,
+  onDrag,
+  onDragEnd,
+}: {
+  dragState: DragState | null;
+  onDrag: (x: number, z: number) => void;
+  onDragEnd: () => void;
+}) {
+  const { camera, gl } = useThree();
+  const raycaster = useMemo(() => new Raycaster(), []);
+  const floorPlane = useMemo(() => new Plane(new Vector3(0, 1, 0), 0), []);
+  const mouse = useMemo(() => new Vector2(), []);
+  const intersection = useMemo(() => new Vector3(), []);
+
+  // Keep stable refs for callbacks to avoid stale closures
+  const onDragRef = useRef(onDrag);
+  const onDragEndRef = useRef(onDragEnd);
+  onDragRef.current = onDrag;
+  onDragEndRef.current = onDragEnd;
+
+  useEffect(() => {
+    if (!dragState) return;
+
+    const canvas = gl.domElement;
+
+    const getWorldPoint = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      raycaster.ray.intersectPlane(floorPlane, intersection);
+      return intersection;
+    };
+
+    const handleMove = (e: PointerEvent) => {
+      const pt = getWorldPoint(e);
+      if (pt) {
+        onDragRef.current(pt.x - dragState.offsetX, pt.z - dragState.offsetZ);
+      }
+    };
+
+    const handleUp = () => {
+      onDragEndRef.current();
+      document.body.style.cursor = "auto";
+    };
+
+    document.body.style.cursor = "grabbing";
+    canvas.addEventListener("pointermove", handleMove);
+    canvas.addEventListener("pointerup", handleUp);
+    return () => {
+      canvas.removeEventListener("pointermove", handleMove);
+      canvas.removeEventListener("pointerup", handleUp);
+    };
+  }, [dragState, camera, gl, raycaster, floorPlane, mouse, intersection]);
+
+  return null;
+}
 
 interface SceneProps extends RoomViewerProps {
   onGlbLoaded?: () => void;
@@ -251,6 +326,7 @@ function Scene({
   placements,
   furnitureItems,
   onGlbLoaded,
+  onPlacementChange,
 }: SceneProps) {
   const itemMap = new Map<string, FurnitureItem>();
   if (furnitureItems) {
@@ -260,6 +336,58 @@ function Scene({
   }
 
   const hasRoomGlb = !!roomGlbUrl;
+  // biome-ignore lint/suspicious/noExplicitAny: drei OrbitControls ref type
+  const controlsRef = useRef<any>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+
+  // Keep a stable ref to placements for use in callbacks
+  const placementsRef = useRef(placements);
+  placementsRef.current = placements;
+  const onChangeRef = useRef(onPlacementChange);
+  onChangeRef.current = onPlacementChange;
+
+  const handleDragStart = useCallback((itemId: string, point: Vector3) => {
+    const pls = placementsRef.current;
+    if (!pls || !onChangeRef.current) return;
+    const p = pls.find((pl) => pl.item_id === itemId);
+    if (!p) return;
+    setDragState({
+      itemId,
+      offsetX: point.x - p.position.x,
+      offsetZ: point.z - p.position.z,
+    });
+    const ctrl = controlsRef.current as any;
+    if (ctrl) ctrl.enabled = false;
+  }, []);
+
+  const handleDrag = useCallback((x: number, z: number) => {
+    const pls = placementsRef.current;
+    const onChange = onChangeRef.current;
+    if (!pls || !onChange) return;
+    setDragState((ds) => {
+      if (!ds) return null;
+      const updated = pls.map((p) =>
+        p.item_id === ds.itemId
+          ? {
+              ...p,
+              position: {
+                ...p.position,
+                x: Math.round(x * 100) / 100,
+                z: Math.round(z * 100) / 100,
+              },
+            }
+          : p,
+      );
+      onChange(updated);
+      return ds;
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDragState(null);
+    const ctrl = controlsRef.current as any;
+    if (ctrl) ctrl.enabled = true;
+  }, []);
 
   return (
     <>
@@ -283,6 +411,7 @@ function Scene({
 
       <Environment preset="apartment" />
       <OrbitControls
+        ref={controlsRef}
         makeDefault
         enableDamping
         dampingFactor={0.08}
@@ -290,6 +419,8 @@ function Scene({
         maxDistance={20}
         maxPolarAngle={Math.PI / 2.1}
       />
+
+      <DragPlane dragState={dragState} onDrag={handleDrag} onDragEnd={handleDragEnd} />
 
       {/* Grid floor as fallback when no room data at all */}
       {!roomData && !hasRoomGlb && (
@@ -339,7 +470,13 @@ function Scene({
 
       {/* Furniture models with GLB loading */}
       {placements?.map((p, i) => (
-        <FurnitureModel key={`${p.item_id}-${i}`} placement={p} item={itemMap.get(p.item_id)} />
+        <FurnitureModel
+          key={`${p.item_id}-${i}`}
+          placement={p}
+          item={itemMap.get(p.item_id)}
+          onDragStart={onPlacementChange ? handleDragStart : undefined}
+          selected={dragState?.itemId === p.item_id}
+        />
       ))}
     </>
   );
@@ -361,6 +498,7 @@ export function RoomViewer({
   placements,
   furnitureItems,
   floorplanUrl,
+  onPlacementChange,
 }: RoomViewerProps) {
   // Kick off preload as early as possible
   useMemo(() => {
@@ -390,6 +528,14 @@ export function RoomViewer({
     return () => clearInterval(t);
   }, [showLoading]);
 
+  const handlePlacementChange = onPlacementChange
+    ? (updated: FurniturePlacement[]) => {
+        onPlacementChange(updated);
+      }
+    : undefined;
+
+  const hasPlacements = placements && placements.length > 0;
+
   return (
     <div
       style={{
@@ -414,6 +560,7 @@ export function RoomViewer({
             placements={placements}
             furnitureItems={furnitureItems}
             onGlbLoaded={() => setGlbLoaded(true)}
+            onPlacementChange={handlePlacementChange}
           />
         </Canvas>
       </ViewerErrorBoundary>
@@ -501,7 +648,9 @@ export function RoomViewer({
           animation: "fadeIn 1s ease-out 0.5s both",
         }}
       >
-        <span>Drag to rotate</span>
+        <span>
+          {hasPlacements && onPlacementChange ? "Click furniture to drag" : "Drag to rotate"}
+        </span>
         <span style={{ opacity: 0.3 }}>|</span>
         <span>Scroll to zoom</span>
         <span style={{ opacity: 0.3 }}>|</span>

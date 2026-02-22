@@ -19,14 +19,13 @@ from ..models.schemas import (
     ZoneDecomposition,
 )
 from ..models.verification import PlacementVerificationResult
-from ..prompts.fix_placement import fix_placement_prompt
 from ..prompts.placement import placement_prompt
-from ..prompts.verify_placement import verify_placement_prompt
+from ..prompts.verify_and_fix import verify_and_fix_prompt
 from ..prompts.zone_decomposition import zone_decomposition_prompt
 from ..prompts.zone_placement import zone_placement_prompt
 from ..tools.llm import call_gemini_with_images
 from ..tools.placement_renderer import render_placement_data_url
-from ..tools.placement_validator import validate_placements
+from ..tools.placement_validator import auto_fix_placements, validate_placements
 from ..tools.scene_renderer import render_scene_3d_views
 from .floorplan import _to_data_url, pick_primary_room
 
@@ -179,6 +178,7 @@ async def _place_zone(
     room: RoomData,
     furniture: list[FurnitureItem],
     other_zones: list[FurnitureZone],
+    all_rooms: list[RoomData] | None,
     input_images: list[str],
     zone_index: int,
     trace: list[dict],
@@ -193,7 +193,7 @@ async def _place_zone(
         return []
 
     t0 = time.time()
-    prompt = zone_placement_prompt(zone, room, zone_furniture, other_zones)
+    prompt = zone_placement_prompt(zone, room, zone_furniture, other_zones, all_rooms=all_rooms)
     raw = await call_gemini_with_images(prompt, input_images)
     duration_ms = (time.time() - t0) * 1000
 
@@ -242,7 +242,10 @@ async def _zone_placement_pipeline(
     for i, zone in enumerate(decomposition.zones):
         other_zones = [z for z in decomposition.zones if z.name != zone.name]
         tasks.append(
-            _place_zone(zone, room, furniture, other_zones, input_images, i, trace, job_id)
+            _place_zone(
+                zone, room, furniture, other_zones, all_rooms,
+                input_images, i, trace, job_id,
+            )
         )
 
     zone_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -478,6 +481,8 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
         )
 
         if zone_placements is not None:
+            # Programmatically resolve overlaps/OOB from zone merge before verify loop
+            zone_placements = auto_fix_placements(room, zone_placements, dims_map)
             result = PlacementResult(placements=zone_placements)
             logger.info("Using zone-based placement: %d items", len(result.placements))
         else:
@@ -490,52 +495,53 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
                 original_floorplan_url, room_diagram_url, trace, job_id,
             )
 
-        # === Phase 4: Verify → Fix loop ===
+        # === Phase 4: Combined Verify+Fix loop (single LLM call per iteration) ===
         for iteration in range(MAX_VERIFY_ITERATIONS):
             t0 = time.time()
             trace.append(_trace_event(
-                f"verify_{iteration}",
-                f"Verify iteration {iteration}: rendering 3D views",
+                f"verify_fix_{iteration}",
+                f"Verify+fix iteration {iteration}: rendering views",
             ))
             db.update_job(job_id, {"trace": trace})
 
             try:
-                # 1. Render views for verification
+                # 1. Render views
                 verify_images: list[str] = []
                 if room_glb_url:
                     scene_urls = await render_scene_3d_views(
                         room_glb_url, result.placements, furniture, all_rooms,
                     )
                     verify_images.extend(scene_urls)
-                # Always include labeled 2D diagram so Gemini can match names
                 diagram_url = render_placement_data_url(room, result.placements, furniture)
                 verify_images.append(diagram_url)
 
-                # 2. Ask Gemini to VERIFY (structured result, not new placement)
-                v_prompt = verify_placement_prompt(room, furniture, result.model_dump())
-                verify_raw = await call_gemini_with_images(v_prompt, verify_images)
+                # 2. Single combined verify+fix call
+                vf_prompt = verify_and_fix_prompt(room, furniture, result.model_dump())
+                vf_raw = await call_gemini_with_images(vf_prompt, verify_images)
                 duration_ms = (time.time() - t0) * 1000
 
-                verify_json_str = _extract_json(verify_raw)
-                verify_data = json.loads(verify_json_str)
+                vf_json_str = _extract_json(vf_raw)
+                vf_data = json.loads(vf_json_str)
 
+                # 3. Parse evaluation
+                eval_data = vf_data.get("evaluation", {})
                 try:
-                    verification = PlacementVerificationResult.model_validate(verify_data)
+                    verification = PlacementVerificationResult.model_validate(eval_data)
                 except Exception:
                     verification = PlacementVerificationResult(
                         answers=[], visual_issues=[], overall_score=0.0,
-                        summary=verify_data.get("summary", "Parse error"),
+                        summary=eval_data.get("summary", "Parse error"),
                     )
 
                 score = verification.overall_score
                 n_issues = len(verification.visual_issues)
 
                 trace.append(_trace_event(
-                    f"verify_result_{iteration}",
+                    f"verify_fix_result_{iteration}",
                     f"Score: {score:.2f}, {n_issues} issues",
                     duration_ms=round(duration_ms),
-                    input_prompt=v_prompt[:4000],
-                    output_text=verify_raw[:4000],
+                    input_prompt=vf_prompt[:4000],
+                    output_text=vf_raw[:4000],
                     model=GEMINI_MODEL,
                     image_url=verify_images[0] if verify_images else None,
                     input_images=verify_images,
@@ -549,60 +555,58 @@ async def place_furniture(session_id: str, job_id: str) -> PlacementResult:
                 db.update_job(job_id, {"trace": trace})
 
                 logger.info(
-                    "Verify iteration %d: score=%.2f issues=%d",
+                    "Verify+fix iteration %d: score=%.2f issues=%d",
                     iteration, score, n_issues,
                 )
 
-                # 3. Check quality threshold
+                # 4. Check quality threshold
                 if score >= QUALITY_THRESHOLD:
-                    logger.info("Quality met at iteration %d (%.2f >= %.2f)",
-                                iteration, score, QUALITY_THRESHOLD)
+                    logger.info(
+                        "Quality met at iteration %d (%.2f >= %.2f)",
+                        iteration, score, QUALITY_THRESHOLD,
+                    )
                     break
 
-                # 4. Fix — send verification feedback to Gemini
+                # 5. Apply fixed placements from the same response
                 if iteration < MAX_VERIFY_ITERATIONS - 1:
-                    t1 = time.time()
-                    trace.append(_trace_event(
-                        f"fix_{iteration}",
-                        f"Fixing placement (score {score:.2f} < {QUALITY_THRESHOLD})",
-                    ))
-                    db.update_job(job_id, {"trace": trace})
-
-                    f_prompt = fix_placement_prompt(
-                        room, furniture, result.model_dump(), verification.model_dump(),
-                    )
-                    fix_raw = await call_gemini_with_images(f_prompt, verify_images)
-                    fix_duration = (time.time() - t1) * 1000
-
-                    trace.append(_trace_event(
-                        f"fix_result_{iteration}",
-                        "Fix complete",
-                        duration_ms=round(fix_duration),
-                        input_prompt=f_prompt[:4000],
-                        output_text=fix_raw[:4000],
-                        model=GEMINI_MODEL,
-                    ))
-                    db.update_job(job_id, {"trace": trace})
-
-                    fix_json_str = _extract_json(fix_raw)
-                    fix_data = json.loads(fix_json_str)
-                    fixed = PlacementResult.model_validate(fix_data)
-
-                    if len(fixed.placements) >= len(result.placements) * 0.5:
-                        result = fixed
-                        logger.info("Fix applied: %d items", len(result.placements))
+                    new_placements = vf_data.get("placements", [])
+                    if new_placements:
+                        try:
+                            fixed = PlacementResult.model_validate(
+                                {"placements": new_placements}
+                            )
+                            if len(fixed.placements) >= len(result.placements) * 0.5:
+                                # Programmatically resolve any overlaps the LLM introduced
+                                fixed = PlacementResult(
+                                    placements=auto_fix_placements(
+                                        room, fixed.placements, dims_map,
+                                    )
+                                )
+                                result = fixed
+                                logger.info(
+                                    "Fix applied from combined call: %d items",
+                                    len(result.placements),
+                                )
+                            else:
+                                logger.warning(
+                                    "Combined fix returned too few items (%d), keeping current",
+                                    len(fixed.placements),
+                                )
+                                break
+                        except Exception as parse_err:
+                            logger.warning(
+                                "Failed to parse fixed placements: %s", parse_err,
+                            )
+                            break
                     else:
-                        logger.warning(
-                            "Fix returned too few items (%d), keeping current",
-                            len(fixed.placements),
-                        )
+                        logger.warning("No placements in combined response, stopping loop")
                         break
 
             except Exception as verify_err:
-                logger.warning("Verify/fix iteration %d failed: %s", iteration, verify_err)
+                logger.warning("Verify+fix iteration %d failed: %s", iteration, verify_err)
                 trace.append(_trace_event(
-                    f"verify_error_{iteration}",
-                    f"Verify/fix failed: {verify_err}",
+                    f"verify_fix_error_{iteration}",
+                    f"Verify+fix failed: {verify_err}",
                     duration_ms=round((time.time() - t0) * 1000),
                 ))
                 db.update_job(job_id, {"trace": trace})

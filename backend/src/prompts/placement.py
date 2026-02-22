@@ -3,12 +3,14 @@
 import json
 
 from ..models.schemas import FurnitureItem, RoomData
+from ..tools.room_grid import generate_room_grid
 
 
 def placement_prompt(
     room: RoomData,
     furniture: list[FurnitureItem],
     all_rooms: list[RoomData] | None = None,
+    cell_size: float = 0.5,
 ) -> str:
     """Build the prompt for AI-driven furniture placement.
 
@@ -112,6 +114,18 @@ Use these to understand the room layout, door/window positions, and available fl
 - All furniture positions MUST be within these bounds and outside exclusion zones.
 - All position values are in METRES.{exclusion_text}
 
+## Room Grid (each cell = {cell_size}m, apartment-absolute coordinates)
+```
+{generate_room_grid(room, all_rooms, cell_size=cell_size)}
+```
+
+## IMPORTANT: Visualization-of-Thought
+Before outputting JSON, you MUST first draw the grid with your proposed furniture placements.
+Use 2-3 letter abbreviations for each item (e.g., SF=sofa, BD=bed, DK=desk, TB=table, CH=chair).
+Show which cells each item occupies based on its dimensions.
+Then verify visually that nothing overlaps and items are within bounds.
+Finally, output the JSON coordinates.
+
 ## Placement Rules
 1. Keep at least 60 cm (0.6 m) walkway clearance between furniture.
 2. Do NOT place furniture blocking doors or windows.
@@ -123,7 +137,8 @@ Use these to understand the room layout, door/window positions, and available fl
 8. Wardrobes and storage against walls, not blocking pathways.
 
 ## Output
-Return ONLY valid JSON (no markdown fences):
+First draw the grid with your placements (see Visualization-of-Thought above).
+Then return valid JSON (no markdown fences):
 {{
   "placements": [
     {{

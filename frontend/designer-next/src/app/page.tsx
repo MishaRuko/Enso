@@ -59,7 +59,16 @@ const STEPS = [
     label: "Describe",
     desc: "Tell our AI about your style, budget, and space through natural conversation.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
         <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
         <line x1="12" y1="19" x2="12" y2="23" />
@@ -72,7 +81,16 @@ const STEPS = [
     label: "Curate",
     desc: "AI searches real furniture catalogs to find pieces that match your vision perfectly.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect x="3" y="3" width="7" height="7" />
         <rect x="14" y="3" width="7" height="7" />
         <rect x="3" y="14" width="7" height="7" />
@@ -85,7 +103,16 @@ const STEPS = [
     label: "Visualize",
     desc: "See every curated piece placed in your actual room layout in full 3D.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
         <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
         <line x1="12" y1="22.08" x2="12" y2="12" />
@@ -97,7 +124,16 @@ const STEPS = [
     label: "Purchase",
     desc: "Love what you see? Buy everything with a single click through Stripe checkout.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
         <line x1="3" y1="6" x2="21" y2="6" />
         <path d="M16 10a4 4 0 0 1-8 0" />
@@ -109,7 +145,16 @@ const STEPS = [
 const FEATURES = [
   {
     icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
         <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
         <line x1="12" y1="19" x2="12" y2="23" />
@@ -121,7 +166,16 @@ const FEATURES = [
   },
   {
     icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <rect x="3" y="3" width="7" height="7" />
         <rect x="14" y="3" width="7" height="7" />
         <rect x="3" y="14" width="7" height="7" />
@@ -133,7 +187,16 @@ const FEATURES = [
   },
   {
     icon: (
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
         <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
         <line x1="12" y1="22.08" x2="12" y2="12" />
@@ -154,15 +217,6 @@ const CARD_PARCHMENT = {
   WebkitBackdropFilter: "blur(20px)",
   border: "1px solid rgba(236,230,219,0.5)",
   boxShadow: "0 2px 24px rgba(26,26,56,0.03)",
-  borderRadius: "var(--radius-xl)",
-} as const;
-
-const GLASS = {
-  background: "rgba(250,249,247,0.55)",
-  backdropFilter: "blur(24px)",
-  WebkitBackdropFilter: "blur(24px)",
-  border: "1px solid rgba(236,230,219,0.6)",
-  boxShadow: "0 4px 40px rgba(26,26,56,0.03), inset 0 1px 0 rgba(255,255,255,0.5)",
   borderRadius: "var(--radius-xl)",
 } as const;
 
@@ -281,8 +335,8 @@ export default function HomePage() {
               animation: "fadeUp 1s cubic-bezier(0.4, 0, 0.2, 1) 0.55s both",
             }}
           >
-            AI-powered interior design that goes from voice consultation to a fully
-            furnished 3D room — in minutes, not weeks.
+            AI-powered interior design that goes from voice consultation to a fully furnished 3D
+            room — in minutes, not weeks.
           </p>
 
           {/* CTA buttons */}
@@ -337,6 +391,20 @@ export default function HomePage() {
               {loading === "design" ? "Creating..." : "Upload Floorplan"}
             </button>
           </div>
+          <a
+            href="/deck"
+            style={{
+              marginTop: "1.25rem",
+              fontSize: "0.75rem",
+              color: "rgba(26,26,56,0.5)",
+              textDecoration: "underline",
+              textUnderlineOffset: "3px",
+              letterSpacing: "0.04em",
+              animation: "fadeUp 1s cubic-bezier(0.4, 0, 0.2, 1) 0.9s both",
+            }}
+          >
+            deck
+          </a>
         </div>
 
         {/* Scroll indicator — bottom-left */}
@@ -526,11 +594,11 @@ export default function HomePage() {
         style={{
           position: "relative",
           zIndex: 1,
-          padding: "4rem 2rem 7rem",
+          padding: "6rem 2rem 7rem",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          background: "var(--bg)",
+          background: "#1a2744",
         }}
       >
         <FadeIn>
@@ -538,7 +606,7 @@ export default function HomePage() {
             style={{
               fontSize: "0.6875rem",
               fontWeight: 600,
-              color: "var(--sage)",
+              color: "rgba(255,255,255,0.5)",
               letterSpacing: "0.16em",
               textTransform: "uppercase",
               textAlign: "center",
@@ -553,8 +621,8 @@ export default function HomePage() {
               fontSize: "2.25rem",
               fontWeight: 400,
               letterSpacing: "0.03em",
-              color: "#1a1a38",
-              marginBottom: "0.75rem",
+              color: "#db504a",
+              marginBottom: "1rem",
               textAlign: "center",
             }}
           >
@@ -562,13 +630,27 @@ export default function HomePage() {
           </h2>
           <p
             style={{
+              fontSize: "1.0625rem",
+              color: "rgba(255,255,255,0.75)",
+              textAlign: "center",
+              marginBottom: "1rem",
+              maxWidth: "640px",
+              lineHeight: 1.7,
+            }}
+          >
+            The world&apos;s first independent AI interior designer. Enso handles homes, offices,
+            and commercial spaces — from initial consultation through furniture curation, 3D
+            visualization, and purchase logistics.
+          </p>
+          <p
+            style={{
               fontSize: "0.9375rem",
-              color: "var(--text-3)",
+              color: "rgba(255,255,255,0.45)",
               textAlign: "center",
               marginBottom: "3.5rem",
             }}
           >
-            Not a mockup tool. A complete design agent.
+            Not a mockup tool. A complete design agent that manages your move-in, end to end.
           </p>
         </FadeIn>
 
@@ -582,66 +664,59 @@ export default function HomePage() {
             justifyContent: "center",
           }}
         >
-          {FEATURES.map((f, i) => {
-            const iconBgs = [
-              "rgba(219,80,74,0.07)",
-              "rgba(124,140,110,0.12)",
-              "rgba(26,26,56,0.05)",
-            ];
-            return (
-              <FadeIn
-                key={f.title}
-                delay={0.12 * i}
-                style={{ flex: "1 1 260px", maxWidth: "300px" }}
+          {FEATURES.map((f, i) => (
+            <FadeIn key={f.title} delay={0.12 * i} style={{ flex: "1 1 260px", maxWidth: "300px" }}>
+              <div
+                className="card-hover"
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  backdropFilter: "blur(24px)",
+                  WebkitBackdropFilter: "blur(24px)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  boxShadow: "0 4px 40px rgba(0,0,0,0.1)",
+                  borderRadius: "var(--radius-xl)",
+                  padding: "2.25rem 1.75rem",
+                  height: "100%",
+                }}
               >
                 <div
-                  className="card-hover"
                   style={{
-                    ...GLASS,
-                    padding: "2.25rem 1.75rem",
-                    height: "100%",
+                    width: "52px",
+                    height: "52px",
+                    borderRadius: "50%",
+                    background: "rgba(255,255,255,0.08)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#db504a",
+                    marginBottom: "1.5rem",
                   }}
                 >
-                  <div
-                    style={{
-                      width: "52px",
-                      height: "52px",
-                      borderRadius: "50%",
-                      background: iconBgs[i % 3],
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#1a1a38",
-                      marginBottom: "1.5rem",
-                      transition: "all 0.4s ease",
-                    }}
-                  >
-                    {f.icon}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "1rem",
-                      fontWeight: 600,
-                      color: "#1a1a38",
-                      letterSpacing: "0.01em",
-                      marginBottom: "0.75rem",
-                    }}
-                  >
-                    {f.title}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.8125rem",
-                      color: "var(--text-3)",
-                      lineHeight: 1.85,
-                    }}
-                  >
-                    {f.desc}
-                  </div>
+                  {f.icon}
                 </div>
-              </FadeIn>
-            );
-          })}
+                <div
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: 600,
+                    color: "#db504a",
+                    letterSpacing: "0.01em",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  {f.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: "0.8125rem",
+                    color: "rgba(255,255,255,0.55)",
+                    lineHeight: 1.85,
+                  }}
+                >
+                  {f.desc}
+                </div>
+              </div>
+            </FadeIn>
+          ))}
         </div>
       </section>
 
@@ -731,7 +806,7 @@ export default function HomePage() {
           position: "relative",
           zIndex: 1,
           marginTop: "5rem",
-          background: "#2e2e38",
+          background: "#1a2744",
           padding: "3.5rem 2rem 2.5rem",
           display: "flex",
           flexDirection: "column",

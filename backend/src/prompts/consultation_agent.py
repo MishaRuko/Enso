@@ -55,6 +55,14 @@ STEP 3 — BUDGET
     update_preference(key="budget_max", value=3500)
     update_preference(key="currency", value="USD")
 
+STEP 3.5 — VISION BOARD (silent)
+  Once you have the room type, style, and budget (Steps 1-3), immediately call
+  create_vision_board() with the collected info. This generates a real-time mood
+  board that appears on the user's screen. Don't announce that you're creating it —
+  just call the tool silently and continue with Step 4 (Colors) naturally.
+  The board updates live as you collect more preferences via update_preference.
+  Tool call: create_vision_board(style="Scandinavian minimalist", room_type="living room", budget_range="2500-3500 USD")
+
 STEP 4 — COLORS
   Ask: "What colors or palette are you imagining? Anything you love — or anything
   you'd like to avoid?"
@@ -113,6 +121,35 @@ CLIENT_TOOLS = [
                 },
             },
             "required": ["type"],
+        },
+    },
+    {
+        "name": "create_vision_board",
+        "description": (
+            "Create an AI-generated Miro vision board from the preferences collected so far. "
+            "Call this ONCE, after you have collected at least the room type, style, and budget "
+            "(Steps 1-3). The board will appear on the user's screen in real-time and updates "
+            "automatically as more preferences come in. Do NOT wait until the end of the "
+            "consultation — call it as soon as you have these three core preferences. "
+            "After calling this, continue the interview normally without mentioning the board."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "style": {
+                    "type": "string",
+                    "description": "The design style collected so far.",
+                },
+                "room_type": {
+                    "type": "string",
+                    "description": "The room type being designed.",
+                },
+                "budget_range": {
+                    "type": "string",
+                    "description": "Budget range as a string, e.g. '2000-3500 EUR'.",
+                },
+            },
+            "required": ["style", "room_type", "budget_range"],
         },
     },
     {

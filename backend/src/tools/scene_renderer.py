@@ -329,7 +329,7 @@ window.captureView = function(azimuthDeg, elevationDeg, isParallel) {
   }
 
   r.render(scene, camera);
-  return r.domElement.toDataURL('image/png');
+  return r.domElement.toDataURL('image/jpeg', 0.8);
 };
 
 window._ready = true;
@@ -448,8 +448,9 @@ def _data_url_to_image(data_url: str) -> Image.Image:
 
 def _img_to_data_url(img: Image.Image) -> str:
     buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    img = img.convert("RGB")
+    img.save(buf, format="JPEG", quality=85)
+    return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
 
 
 def _is_ikea_url(url: str) -> bool:
@@ -463,7 +464,7 @@ async def render_scene_3d_views(
     all_rooms: list | None = None,
     target_width: float = 6.8,
     target_length: float = 8.0,
-    resolution: tuple[int, int] = (800, 600),
+    resolution: tuple[int, int] = (400, 300),
 ) -> list[str]:
     """Render room GLB + textured furniture with transparent bounding boxes.
 

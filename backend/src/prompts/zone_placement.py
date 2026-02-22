@@ -3,6 +3,7 @@
 import json
 
 from ..models.schemas import FurnitureItem, FurnitureZone, RoomData
+from ..tools.room_grid import generate_room_grid
 
 
 def zone_placement_prompt(
@@ -10,6 +11,8 @@ def zone_placement_prompt(
     room: RoomData,
     zone_furniture: list[FurnitureItem],
     other_zones: list[FurnitureZone],
+    cell_size: float = 0.5,
+    all_rooms: list[RoomData] | None = None,
 ) -> str:
     furniture_info = []
     for f in zone_furniture:
@@ -81,6 +84,11 @@ Zone bounding box: x in [{zone_x_min:.2f}, {zone_x_max:.2f}], z in [{zone_z_min:
 CRITICAL: ALL furniture positions MUST be INSIDE this polygon. Do NOT place items outside it.
 The polygon vertices define the usable floor area for this zone.{exclusion_text}
 
+## Room Grid (each cell = {cell_size}m, apartment-absolute coordinates)
+```
+{generate_room_grid(room, all_rooms=all_rooms, cell_size=cell_size)}
+```
+
 ## Furniture to Place ({len(zone_furniture)} items)
 ```json
 {json.dumps(furniture_info, indent=2)}
@@ -99,6 +107,14 @@ The polygon vertices define the usable floor area for this zone.{exclusion_text}
 6. Allow 75cm clearance for chairs to be pulled out.
 7. Desks perpendicular to or facing windows for natural light.
 
+## IMPORTANT: Visualization-of-Thought
+Before outputting JSON, you MUST first draw the grid with your proposed furniture placements.
+Use 2-3 letter abbreviations for each item (e.g., SF=sofa, BD=bed, DK=desk, TB=table, CH=chair).
+Show which cells each item occupies based on its dimensions.
+Then verify visually that nothing overlaps and items are within the zone polygon.
+Finally, output the JSON coordinates.
+
 ## Output
-Return ONLY valid JSON (no markdown fences):
+First draw the grid with your placements (see Visualization-of-Thought above).
+Then return valid JSON (no markdown fences):
 {{"placements": [{{"item_id": "...", "name": "...", "position": {{"x": ..., "y": 0, "z": ...}}, "rotation_y_degrees": ..., "reasoning": "..."}}]}}"""

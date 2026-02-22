@@ -2,7 +2,7 @@
  * REST API client for the HomeDesigner backend.
  */
 
-import type { DesignJob, DesignSession } from "./types";
+import type { DesignJob, DesignSession, PlacementResult } from "./types";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -55,6 +55,19 @@ export function listSessionJobs(sessionId: string): Promise<DesignJob[]> {
   return apiFetch(`/api/sessions/${sessionId}/jobs`);
 }
 
+// --- Placements ---
+
+export function savePlacements(
+  sessionId: string,
+  placements: PlacementResult,
+): Promise<{ status: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/placements`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(placements),
+  });
+}
+
 // --- Cancel ---
 
 export function cancelSession(sessionId: string): Promise<{ status: string }> {
@@ -67,28 +80,40 @@ export function createCheckout(sessionId: string): Promise<{ payment_link: strin
   return apiFetch(`/api/sessions/${sessionId}/checkout`, { method: "POST" });
 }
 
-export function generateMiroBoard(sessionId: string): Promise<{ miro_board_url: string }> {
+export function generateMiroBoard(
+  sessionId: string,
+): Promise<{ miro_board_url: string; board_id: string }> {
   return apiFetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
+}
+
+export function addMiroItem(
+  sessionId: string,
+  boardId: string,
+  label: string,
+  value: string,
+): Promise<{ ok: boolean; item_id: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/miro/item`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ board_id: boardId, label, value }),
+  });
 }
 
 // --- Voice Intake ---
 
 export function createVoiceSession(): Promise<{ session_id: string }> {
-  return apiFetch("/session/new", { method: "POST" });
+  return apiFetch("/backend-session/new", { method: "POST" });
 }
 
 export function getVoiceSession(sessionId: string): Promise<any> {
-  return apiFetch(`/session/${sessionId}`);
+  return apiFetch(`/backend-session/${sessionId}`);
 }
 
 export function getVoiceSessionToken(sessionId: string): Promise<any> {
   return apiFetch(`/voice/session_token?session_id=${sessionId}`, { method: "POST" });
 }
 
-export function voiceIntakeTurn(
-  sessionId: string,
-  userText: string
-): Promise<any> {
+export function voiceIntakeTurn(sessionId: string, userText: string): Promise<any> {
   return apiFetch("/voice_intake/turn", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -45,7 +45,7 @@ export default function TextIntake({
   useEffect(() => {
     const initSession = async () => {
       try {
-        const res = await fetch(`/session/${sessionId}`);
+        const res = await fetch(`/backend-session/${sessionId}`);
         if (res.ok) {
           const session = await res.json();
           setState((prev) => ({

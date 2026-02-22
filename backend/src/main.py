@@ -5,6 +5,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 import asyncio
+import re as _re
 
 import httpx
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -13,10 +14,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from . import db
-from .models.schemas import UserPreferences
+from .models.schemas import PlacementResult, UserPreferences
+from .routes import session, tools, voice, voice_intake
+from .tools.miro_mcp import generate_vision_board_with_miro_ai
 from .workflow.floorplan import process_floorplan
 from .workflow.pipeline import run_full_pipeline
-from .routes import session, tools, voice, voice_intake
 
 app = FastAPI(title="HomeDesigner", version="0.1.0")
 
@@ -37,6 +39,36 @@ app.include_router(session.router)
 app.include_router(tools.router)
 app.include_router(voice.router)
 app.include_router(voice_intake.router)
+
+
+# ---------------------------------------------------------------------------
+# Helpers — Miro
+# ---------------------------------------------------------------------------
+
+
+def _extract_board_id(url: str) -> str:
+    match = _re.search(r'/board/([^/?]+)', url)
+    return match.group(1) if match else ""
+
+
+def _preferences_to_brief(prefs: dict) -> dict:
+    style = prefs.get("style", "")
+    return {
+        "budget": prefs.get("budget_max"),
+        "currency": prefs.get("currency", "EUR"),
+        "style": (
+            [style] if isinstance(style, str) and style
+            else style if isinstance(style, list) else []
+        ),
+        "avoid": prefs.get("dealbreakers", []),
+        "rooms_priority": [prefs["room_type"]] if prefs.get("room_type") else [],
+        "must_haves": prefs.get("must_haves", []),
+        "existing_items": prefs.get("existing_furniture", []),
+        "constraints": [],
+        "vibe_words": prefs.get("colors", []),
+        "reference_images": [],
+        "notes": "",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +170,56 @@ async def save_preferences(session_id: str, prefs: UserPreferences):
     return updated
 
 
+@app.post("/api/sessions/{session_id}/miro")
+async def create_miro_board(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    existing_url = session.get("miro_board_url")
+    if existing_url:
+        return {"miro_board_url": existing_url, "board_id": _extract_board_id(existing_url)}
+    preferences = session.get("preferences") or {}
+    brief = _preferences_to_brief(preferences)
+    result = await asyncio.to_thread(generate_vision_board_with_miro_ai, brief)
+    db.update_session(session_id, {"miro_board_url": result.url})
+    return {"miro_board_url": result.url, "board_id": _extract_board_id(result.url)}
+
+
+class MiroItemRequest(BaseModel):
+    board_id: str
+    label: str
+    value: str
+    color: str = "light_yellow"
+
+
+@app.post("/api/sessions/{session_id}/miro/item")
+async def add_miro_item(session_id: str, body: MiroItemRequest):
+    from .tools.miro import add_sticky_note
+
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    positions = {
+        "style": (-1100, -790, "light_blue"),
+        "budget_min": (1020, -790, "light_yellow"),
+        "budget_max": (1020, -790, "light_yellow"),
+        "colors": (-1100, -410, "cyan"),
+        "room_type": (1020, -410, "light_green"),
+        "must_haves": (1020, -120, "light_pink"),
+        "dealbreakers": (-1100, -120, "red"),
+        "lifestyle": (1020, 168, "gray"),
+        "existing_furniture": (-1100, 168, "white"),
+        "currency": (1020, -600, "light_yellow"),
+    }
+    x, y, default_color = positions.get(body.label, (0, 500, body.color))
+    result = await add_sticky_note(
+        body.board_id,
+        f"{body.label.upper().replace('_', ' ')}\n{body.value}",
+        x=x, y=y, color=default_color, width=220,
+    )
+    return {"ok": True, "item_id": result.get("id", "")}
+
+
 @app.post("/api/sessions/{session_id}/floorplan")
 async def upload_floorplan(session_id: str, file: UploadFile):
     session = db.get_session(session_id)
@@ -186,6 +268,15 @@ async def start_search(session_id: str):
     task = asyncio.create_task(_run())
     task.add_done_callback(lambda t: t.result() if not t.cancelled() and not t.exception() else None)
     return {"job_id": job["id"]}
+
+
+@app.patch("/api/sessions/{session_id}/placements")
+async def update_placements(session_id: str, body: PlacementResult):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    db.update_session(session_id, {"placements": body.model_dump()})
+    return {"status": "ok"}
 
 
 @app.post("/api/sessions/{session_id}/place")
