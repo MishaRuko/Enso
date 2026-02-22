@@ -36,11 +36,11 @@ interface WallSegment {
 
 function buildWallSegments(wall: DoorWindow["wall"], room: RoomData): WallSegment[] {
   const len = wallLength(wall, room);
-  const h = room.height_m;
+  const h = room.height_m ?? 2.8;
 
   // Collect openings on this wall
-  const doors = room.doors.filter((d) => d.wall === wall);
-  const windows = room.windows.filter((w) => w.wall === wall);
+  const doors = (room.doors ?? []).filter((d) => d.wall === wall);
+  const windows = (room.windows ?? []).filter((w) => w.wall === wall);
 
   // Sort all openings left-to-right along the wall
   type Opening = {

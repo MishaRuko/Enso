@@ -8,12 +8,7 @@ import { FurnitureSidebar } from "@/components/furniture-sidebar";
 import { FloorplanUpload } from "@/components/floorplan-upload";
 import { StatusBar } from "@/components/status-bar";
 import { EnsoSpinner } from "@/components/enso-logo";
-import {
-  createSession,
-  runPipeline,
-  listSessionJobs,
-  savePlacements,
-} from "@/lib/backend";
+import { createSession, runPipeline, listSessionJobs, savePlacements } from "@/lib/backend";
 import type {
   DesignJob,
   DesignSession,
@@ -36,7 +31,6 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     }
   }, [error, router]);
   const [pipelineStarting, setPipelineStarting] = useState(false);
-  const [pipelineMode, setPipelineMode] = useState<"fast" | "pro">("fast");
   const [localPlacements, setLocalPlacements] = useState<FurniturePlacement[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [viewPhase, setViewPhase] = useState<number | null>(null);
@@ -192,7 +186,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   async function handleRunPipeline() {
     setPipelineStarting(true);
     try {
-      await runPipeline(id, pipelineMode);
+      await runPipeline(id);
       refetch();
     } catch (err) {
       console.error("Pipeline start failed:", err);
@@ -406,58 +400,6 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
                         ? `${roomData.name} — ${roomData.width_m}m \u00D7 ${roomData.length_m}m`
                         : "Room preview"}
                     </p>
-                    {/* Fast / Pro mode toggle */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        background: "rgba(250,249,247,0.9)",
-                        backdropFilter: "blur(12px)",
-                        padding: "3px",
-                        borderRadius: "var(--radius-full)",
-                        border: "1px solid rgba(236,230,219,0.5)",
-                      }}
-                    >
-                      {(["fast", "pro"] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setPipelineMode(mode)}
-                          style={{
-                            padding: "0.375rem 1rem",
-                            borderRadius: "var(--radius-full)",
-                            border: "none",
-                            fontSize: "0.8125rem",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            transition: "all 0.2s ease",
-                            background:
-                              pipelineMode === mode
-                                ? mode === "pro"
-                                  ? "#1a1a38"
-                                  : "var(--accent)"
-                                : "transparent",
-                            color: pipelineMode === mode ? "#fff" : "var(--text-3)",
-                          }}
-                        >
-                          {mode === "fast" ? "Fast" : "Pro"}
-                        </button>
-                      ))}
-                    </div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        color: "var(--muted)",
-                        maxWidth: 260,
-                        textAlign: "center",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {pipelineMode === "fast"
-                        ? "Gemini spatial reasoning — quick results"
-                        : "Gurobi integer programming — optimized placement"}
-                    </p>
                     <button
                       type="button"
                       className="btn-primary"
@@ -592,10 +534,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               animation: "slideInRight 0.4s ease-out",
             }}
           >
-            <FurnitureSidebar
-              sessionId={id}
-              items={session.furniture_list}
-            />
+            <FurnitureSidebar sessionId={id} items={session.furniture_list} />
           </div>
         )}
       </div>
@@ -830,10 +769,19 @@ const STEP_LABELS: Record<string, string> = {
   room_3d: "Building 3D room model",
   completed: "Done",
   shopping_list: "Generating furniture list",
-  searching_ikea: "Searching IKEA catalog",
   search_done: "Search complete",
   gemini_attempt_1: "Computing placement",
   gemini_response_1: "Placement computed",
+  downloading_floorplan: "Downloading floorplan",
+  render_binary: "Rendering binary floorplan",
+  nano_banana: "Coloring rooms",
+  grid_building: "Building placement grid",
+  grid_ready: "Placement grid built",
+  furniture_specs: "Generating furniture list",
+  searching_ikea: "Searching IKEA catalog",
+  constraints: "Generating placement constraints",
+  optimizing: "Running Gurobi optimizer",
+  trellis_3d: "Generating 3D models",
   error: "Error",
 };
 
@@ -842,6 +790,7 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(Date.now());
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -869,10 +818,25 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
     }
   }
 
-  const completedSteps = allEvents.filter((e) => e.duration_ms != null && e.step !== "started");
+  const rawCompleted = allEvents.filter((e) => e.duration_ms != null && e.step !== "started");
+
+  // Group consecutive steps with the same base name (e.g. search_item_0, search_item_1 → search_item)
+  type StepGroup = { events: TraceEvent[]; baseStep: string };
+  const stepGroups: StepGroup[] = [];
+  for (const evt of rawCompleted) {
+    const base = evt.step.replace(/_\d+$/, "");
+    const last = stepGroups[stepGroups.length - 1];
+    if (last && last.baseStep === base) {
+      last.events.push(evt);
+    } else {
+      stepGroups.push({ events: [evt], baseStep: base });
+    }
+  }
   const lastEvent = allEvents[allEvents.length - 1];
-  const lastImageEvt = [...allEvents].reverse().find((e) => e.image_url || e.output_image);
-  const lastImage = lastImageEvt?.image_url || lastImageEvt?.output_image;
+  const allImages = allEvents
+    .map((e) => e.image_url || e.output_image)
+    .filter((url): url is string => !!url);
+  const lastImage = allImages[allImages.length - 1];
 
   const elapsedSec = Math.floor(elapsed / 1000);
   const mins = Math.floor(elapsedSec / 60);
@@ -887,6 +851,8 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
         alignItems: "center",
         gap: "1.5rem",
         maxWidth: 420,
+        maxHeight: "80vh",
+        overflowY: "auto",
       }}
     >
       <EnsoSpinner size={48} />
@@ -922,39 +888,344 @@ function PipelineProgress({ sessionId, phase }: { sessionId: string; phase: stri
         />
       )}
 
-      {completedSteps.length > 0 && (
+      {stepGroups.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
-          {completedSteps.map((evt, i) => (
-            <div
-              key={`${evt.step}-${i}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 12px",
-                borderRadius: 8,
-                background: "rgba(250,249,247,0.7)",
-                backdropFilter: "blur(8px)",
-                border: "1px solid rgba(236,230,219,0.5)",
-                animation: "fadeUp 0.3s ease-out",
-                fontSize: "0.8125rem",
-              }}
-            >
-              <span style={{ color: "var(--sage)", fontSize: "0.875rem", flexShrink: 0 }}>
-                {"\u2713"}
-              </span>
-              <span style={{ color: "var(--text)", flex: 1 }}>
-                {STEP_LABELS[evt.step] || evt.message || evt.step.replace(/_/g, " ")}
-              </span>
-              {evt.duration_ms != null && (
-                <span style={{ color: "var(--muted)", fontSize: "0.75rem", flexShrink: 0 }}>
-                  {evt.duration_ms < 1000
-                    ? `${evt.duration_ms.toFixed(0)}ms`
-                    : `${(evt.duration_ms / 1000).toFixed(1)}s`}
-                </span>
-              )}
-            </div>
-          ))}
+          {stepGroups.map((group, gi) => {
+            if (group.events.length > 1) {
+              const groupKey = `group-${gi}`;
+              const isExpanded = expandedStep === groupKey;
+              const totalMs = group.events.reduce((s, e) => s + (e.duration_ms ?? 0), 0);
+              const foundCount = group.events.filter(
+                (e) => e.message && !e.message.includes("\u2192 0 found"),
+              ).length;
+              const label =
+                STEP_LABELS[group.baseStep] || group.baseStep.replace(/_/g, " ");
+              return (
+                <div key={groupKey} style={{ animation: "fadeUp 0.3s ease-out" }}>
+                  <div
+                    onClick={() => setExpandedStep(isExpanded ? null : groupKey)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 12px",
+                      borderRadius: isExpanded ? "8px 8px 0 0" : 8,
+                      background: "rgba(250,249,247,0.7)",
+                      backdropFilter: "blur(8px)",
+                      border: "1px solid rgba(236,230,219,0.5)",
+                      borderBottom: isExpanded
+                        ? "1px dashed rgba(236,230,219,0.5)"
+                        : undefined,
+                      fontSize: "0.8125rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span
+                      style={{ color: "var(--sage)", fontSize: "0.875rem", flexShrink: 0 }}
+                    >
+                      {"\u2713"}
+                    </span>
+                    <span style={{ color: "var(--text)", flex: 1 }}>
+                      {label}{" "}
+                      <span style={{ color: "var(--muted)" }}>
+                        \u00D7{group.events.length}
+                      </span>
+                      {foundCount > 0 && (
+                        <span style={{ color: "var(--muted)", marginLeft: 4 }}>
+                          \u2014 {foundCount} found
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      style={{ color: "var(--muted)", fontSize: "0.75rem", flexShrink: 0 }}
+                    >
+                      {totalMs < 1000
+                        ? `${totalMs.toFixed(0)}ms`
+                        : `${(totalMs / 1000).toFixed(1)}s`}
+                    </span>
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--muted)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      style={{
+                        flexShrink: 0,
+                        transition: "transform 0.2s",
+                        transform: isExpanded ? "rotate(180deg)" : "rotate(0)",
+                      }}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+                  {isExpanded && (
+                    <div
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: "0 0 8px 8px",
+                        background: "rgba(246,244,240,0.9)",
+                        border: "1px solid rgba(236,230,219,0.5)",
+                        borderTop: "none",
+                        fontSize: "0.75rem",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 4,
+                        maxHeight: 240,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {group.events.map((evt, j) => (
+                        <div
+                          key={`${group.baseStep}-${j}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "2px 0",
+                          }}
+                        >
+                          <span style={{ color: "var(--sage)", fontSize: "0.75rem" }}>
+                            {"\u2713"}
+                          </span>
+                          <span style={{ color: "var(--text-2)", flex: 1 }}>
+                            {evt.message || evt.step.replace(/_/g, " ")}
+                          </span>
+                          <span style={{ color: "var(--muted)", fontSize: "0.6875rem" }}>
+                            {evt.duration_ms != null &&
+                              (evt.duration_ms < 1000
+                                ? `${evt.duration_ms.toFixed(0)}ms`
+                                : `${(evt.duration_ms / 1000).toFixed(1)}s`)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            const evt = group.events[0];
+            const stepKey = `${evt.step}-${gi}`;
+            const isExpanded = expandedStep === stepKey;
+            const hasDetails =
+              evt.input_prompt ||
+              evt.output_text ||
+              evt.input_image ||
+              evt.image_url ||
+              evt.model;
+            return (
+              <div key={stepKey} style={{ animation: "fadeUp 0.3s ease-out" }}>
+                <div
+                  onClick={
+                    hasDetails
+                      ? () => setExpandedStep(isExpanded ? null : stepKey)
+                      : undefined
+                  }
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 12px",
+                    borderRadius: isExpanded ? "8px 8px 0 0" : 8,
+                    background: "rgba(250,249,247,0.7)",
+                    backdropFilter: "blur(8px)",
+                    border: "1px solid rgba(236,230,219,0.5)",
+                    borderBottom: isExpanded
+                      ? "1px dashed rgba(236,230,219,0.5)"
+                      : undefined,
+                    fontSize: "0.8125rem",
+                    cursor: hasDetails ? "pointer" : "default",
+                  }}
+                >
+                  <span
+                    style={{ color: "var(--sage)", fontSize: "0.875rem", flexShrink: 0 }}
+                  >
+                    {"\u2713"}
+                  </span>
+                  <span style={{ color: "var(--text)", flex: 1 }}>
+                    {STEP_LABELS[evt.step] ||
+                      evt.message ||
+                      evt.step.replace(/_/g, " ")}
+                  </span>
+                  {evt.image_url && (
+                    <img
+                      src={evt.image_url}
+                      alt=""
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 4,
+                        objectFit: "cover",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                  {evt.duration_ms != null && (
+                    <span
+                      style={{ color: "var(--muted)", fontSize: "0.75rem", flexShrink: 0 }}
+                    >
+                      {evt.duration_ms < 1000
+                        ? `${evt.duration_ms.toFixed(0)}ms`
+                        : `${(evt.duration_ms / 1000).toFixed(1)}s`}
+                    </span>
+                  )}
+                  {hasDetails && (
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--muted)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      style={{
+                        flexShrink: 0,
+                        transition: "transform 0.2s",
+                        transform: isExpanded ? "rotate(180deg)" : "rotate(0)",
+                      }}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  )}
+                </div>
+                {isExpanded && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: "0 0 8px 8px",
+                      background: "rgba(246,244,240,0.9)",
+                      border: "1px solid rgba(236,230,219,0.5)",
+                      borderTop: "none",
+                      fontSize: "0.75rem",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.5rem",
+                      maxHeight: 320,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {evt.model && (
+                      <div
+                        style={{
+                          color: "var(--muted)",
+                          fontFamily: "monospace",
+                          fontSize: "0.6875rem",
+                        }}
+                      >
+                        Model: {evt.model}
+                      </div>
+                    )}
+                    {evt.input_image && (
+                      <div>
+                        <div
+                          style={{
+                            color: "var(--muted)",
+                            marginBottom: 4,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Input
+                        </div>
+                        <img
+                          src={evt.input_image}
+                          alt="Input"
+                          onClick={() => setLightbox(evt.input_image!)}
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: 120,
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            border: "1px solid var(--border)",
+                          }}
+                        />
+                      </div>
+                    )}
+                    {evt.input_prompt && (
+                      <div>
+                        <div
+                          style={{
+                            color: "var(--muted)",
+                            marginBottom: 4,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Prompt
+                        </div>
+                        <pre
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            margin: 0,
+                            color: "var(--text-2)",
+                            lineHeight: 1.4,
+                            fontFamily: "monospace",
+                            fontSize: "0.6875rem",
+                          }}
+                        >
+                          {evt.input_prompt}
+                        </pre>
+                      </div>
+                    )}
+                    {evt.image_url && (
+                      <div>
+                        <div
+                          style={{
+                            color: "var(--muted)",
+                            marginBottom: 4,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Output Image
+                        </div>
+                        <img
+                          src={evt.image_url}
+                          alt="Output"
+                          onClick={() => setLightbox(evt.image_url!)}
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: 160,
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            border: "1px solid var(--border)",
+                          }}
+                        />
+                      </div>
+                    )}
+                    {evt.output_text && (
+                      <div>
+                        <div
+                          style={{
+                            color: "var(--muted)",
+                            marginBottom: 4,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Output
+                        </div>
+                        <pre
+                          style={{
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                            margin: 0,
+                            color: "var(--text-2)",
+                            lineHeight: 1.4,
+                            fontFamily: "monospace",
+                            fontSize: "0.6875rem",
+                          }}
+                        >
+                          {evt.output_text.length > 2000
+                            ? `${evt.output_text.slice(0, 2000)}\u2026`
+                            : evt.output_text}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

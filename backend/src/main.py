@@ -9,9 +9,9 @@ import re as _re
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from . import db
@@ -90,12 +90,15 @@ async def health():
     return {"status": "ok", "service": "homedesigner"}
 
 
-_GLB_ALLOWED_HOSTS = (".ikea.com", ".fal.ai", ".fal.run", ".sketchfab.com", ".poly.pizza")
+_GLB_ALLOWED_HOSTS = (".ikea.com", ".fal.ai", ".fal.run", ".sketchfab.com", ".poly.pizza", ".digitaloceanspaces.com")
 
 
 @app.get("/api/proxy-glb")
 async def proxy_glb(url: str):
-    """Proxy external GLB files to avoid CORS issues (e.g. IKEA CDN)."""
+    """Proxy external GLB files to avoid CORS issues (e.g. IKEA CDN).
+
+    Streams the response to avoid buffering 15+ MB files in memory.
+    """
     if not url.startswith("https://"):
         raise HTTPException(400, "Only HTTPS URLs allowed")
     hostname = urlparse(url).hostname or ""
@@ -104,14 +107,24 @@ async def proxy_glb(url: str):
     ):
         raise HTTPException(403, {"error": "Domain not allowed"})
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return Response(
-                content=resp.content,
-                media_type=resp.headers.get("content-type", "model/gltf-binary"),
-                headers={"Cache-Control": "public, max-age=86400"},
-            )
+        client = httpx.AsyncClient(follow_redirects=True, timeout=120)
+        req = client.build_request("GET", url)
+        resp = await client.send(req, stream=True)
+        resp.raise_for_status()
+
+        async def _stream():
+            try:
+                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                    yield chunk
+            finally:
+                await resp.aclose()
+                await client.aclose()
+
+        return StreamingResponse(
+            _stream(),
+            media_type=resp.headers.get("content-type", "model/gltf-binary"),
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
     except httpx.HTTPError as e:
         raise HTTPException(502, f"Failed to fetch GLB: {e}")
 
@@ -249,7 +262,8 @@ _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 @app.post("/api/sessions/{session_id}/floorplan")
-async def upload_floorplan(session_id: str, file: UploadFile):
+async def upload_floorplan(session_id: str, file: UploadFile, mode: str = Query("fast")):
+    """Upload floorplan. mode='fast' runs Gemini analysis, mode='pro' runs Misha's full Gurobi pipeline."""
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -267,20 +281,43 @@ async def upload_floorplan(session_id: str, file: UploadFile):
     content_type = file.content_type or "image/png"
 
     public_url = db.upload_to_storage("floorplans", storage_path, contents, content_type)
-    updated = db.update_session(session_id, {"floorplan_url": public_url, "status": "analyzing_floorplan"})
 
-    async def _run_floorplan():
-        try:
-            await process_floorplan(session_id)
-        except Exception:
-            logging.getLogger("floorplan_task").exception("Floorplan task failed for %s", session_id)
-            db.update_session(session_id, {"status": "floorplan_failed"})
+    if mode == "pro":
+        # Pro mode: skip Gemini analysis, run Misha's full Gurobi pipeline directly
+        db.update_session(session_id, {"floorplan_url": public_url, "status": "placing"})
 
-    task = asyncio.create_task(_run_floorplan())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+        async def _run_pro_pipeline():
+            from .workflow.placement_gurobi import place_furniture_gurobi
+            try:
+                job = db.create_job(session_id, phase="gurobi_pipeline")
+                await place_furniture_gurobi(session_id, job["id"])
+                db.update_session(session_id, {"status": "complete"})
+            except Exception:
+                logging.getLogger("pro_pipeline").exception("Pro pipeline failed for %s", session_id)
+                sess = db.get_session(session_id)
+                current = sess.get("status", "unknown") if sess else "unknown"
+                if not current.endswith("_failed"):
+                    db.update_session(session_id, {"status": "placing_failed"})
 
-    return {"floorplan_url": updated["floorplan_url"]}
+        task = asyncio.create_task(_run_pro_pipeline())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+    else:
+        # Fast mode: Gemini floorplan analysis → floorplan_ready → manual Begin Design
+        db.update_session(session_id, {"floorplan_url": public_url, "status": "analyzing_floorplan"})
+
+        async def _run_floorplan():
+            try:
+                await process_floorplan(session_id)
+            except Exception:
+                logging.getLogger("floorplan_task").exception("Floorplan task failed for %s", session_id)
+                db.update_session(session_id, {"status": "floorplan_failed"})
+
+        task = asyncio.create_task(_run_floorplan())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+    return {"floorplan_url": public_url, "mode": mode}
 
 
 @app.post("/api/sessions/{session_id}/search")
@@ -424,7 +461,22 @@ async def list_session_jobs(session_id: str):
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return db.list_jobs(session_id)
+    jobs = db.list_jobs(session_id)
+    # Truncate large trace fields to prevent multi-MB responses that crash the proxy
+    for job in jobs:
+        for evt in job.get("trace") or []:
+            for field in ("input_prompt", "output_text"):
+                if isinstance(evt.get(field), str) and len(evt[field]) > 2000:
+                    evt[field] = evt[field][:2000] + "…"
+            # Strip base64 data URLs from image fields (keep http URLs)
+            for field in ("input_image", "output_image", "image_url"):
+                val = evt.get(field)
+                if isinstance(val, str) and val.startswith("data:"):
+                    evt[field] = None
+            imgs = evt.get("input_images")
+            if isinstance(imgs, list):
+                evt["input_images"] = [u for u in imgs if isinstance(u, str) and not u.startswith("data:")]
+    return jobs
 
 
 # In-memory cancel signals for running pipelines

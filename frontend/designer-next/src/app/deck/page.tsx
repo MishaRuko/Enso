@@ -111,7 +111,239 @@ const SLIDES: Slide[] = [
     ),
   },
 
-  // ── 2. PROBLEM ──
+  // ── 2. INSPIRATION ──
+  {
+    bg: WHITE,
+    render: () => (
+      <SlideLayout bg={WHITE}>
+        <div style={{ maxWidth: "900px", width: "100%", textAlign: "center" }}>
+          <p
+            style={{
+              fontSize: "0.6875rem",
+              fontWeight: 600,
+              color: VERMILLION,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              marginBottom: "1.5rem",
+            }}
+          >
+            The Inspiration
+          </p>
+          <h2
+            style={{
+              fontFamily: "var(--font-display), sans-serif",
+              fontSize: "clamp(1.75rem, 3.5vw, 2.75rem)",
+              fontWeight: 400,
+              letterSpacing: "0.02em",
+              lineHeight: 1.15,
+              color: CHARCOAL,
+              marginBottom: "2.5rem",
+            }}
+          >
+            We saw the problem firsthand.
+          </h2>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "3rem",
+              marginBottom: "3rem",
+            }}
+          >
+            {/* Family photo */}
+            <div style={{ flexShrink: 0, textAlign: "center" }}>
+              <img
+                src="/family.jpg"
+                alt="Danila with his parents"
+                style={{
+                  width: "220px",
+                  height: "220px",
+                  objectFit: "cover",
+                  borderRadius: "1.25rem",
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.12)",
+                }}
+              />
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  fontSize: "0.75rem",
+                  color: "rgba(46,46,56,0.4)",
+                }}
+              >
+                Danila with his parents
+              </div>
+            </div>
+
+            {/* Story */}
+            <div style={{ maxWidth: "480px", textAlign: "left" }}>
+              <svg
+                viewBox="0 0 24 24"
+                fill={VERMILLION}
+                style={{ width: "32px", height: "32px", opacity: 0.3, marginBottom: "0.75rem" }}
+              >
+                <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+              </svg>
+              <p
+                style={{
+                  fontFamily: "var(--font-display), sans-serif",
+                  fontSize: "1.25rem",
+                  fontWeight: 400,
+                  color: CHARCOAL,
+                  lineHeight: 1.5,
+                  marginBottom: "0.75rem",
+                }}
+              >
+                My parents work in real estate.
+              </p>
+              <p
+                style={{
+                  fontSize: "1rem",
+                  color: "rgba(46,46,56,0.55)",
+                  lineHeight: 1.7,
+                }}
+              >
+                I watched them spend hours staging apartments, coordinating movers, and
+                juggling five different tools &mdash; just to furnish a single space. I knew AI
+                could do this end-to-end.
+              </p>
+            </div>
+          </div>
+
+          {/* Validation row */}
+          <div
+            style={{
+              display: "flex",
+              gap: "1.5rem",
+            }}
+          >
+            {/* BFL Hack Win */}
+            <div
+              style={{
+                flex: 1,
+                background: "rgba(236,230,219,0.25)",
+                border: "1px solid rgba(236,230,219,0.5)",
+                borderRadius: "1.25rem",
+                padding: "1.5rem",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "1.75rem",
+                  fontFamily: "var(--font-display), sans-serif",
+                  color: VERMILLION,
+                  marginBottom: "0.375rem",
+                }}
+              >
+                HouseView
+              </div>
+              <div
+                style={{
+                  fontSize: "0.8125rem",
+                  color: "rgba(46,46,56,0.5)",
+                  lineHeight: 1.6,
+                }}
+              >
+                Won the BFL Hack with an AI floorplan-to-3D pipeline &mdash; the precursor to
+                Enso
+              </div>
+            </div>
+
+            {/* Zillow */}
+            <div
+              style={{
+                flex: 1,
+                background: "rgba(236,230,219,0.25)",
+                border: "1px solid rgba(236,230,219,0.5)",
+                borderRadius: "1.25rem",
+                padding: "1.5rem",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.625rem",
+              }}
+            >
+              <svg
+                viewBox="0 0 23.283 25.577"
+                style={{ width: "28px", height: "28px" }}
+              >
+                <g fill="#006aff" fillRule="nonzero">
+                  <path d="m15.743 6.897c.117-.026.169.013.24.091.403.448 1.691 2.021 2.041 2.45.065.078.02.163-.032.208-2.6 2.028-5.493 4.901-7.105 6.955-.032.046-.006.046.02.039 2.808-1.209 9.405-3.14 12.376-3.679v-3.763l-11.628-9.198-11.648 9.191v4.114c3.607-2.144 11.953-5.466 15.736-6.408z" />
+                  <path d="m6.279 22.705c-.097.052-.176.039-.254-.039l-2.171-2.587c-.058-.072-.065-.111.013-.221 1.678-2.457 5.103-6.286 7.287-7.904.039-.026.026-.059-.02-.039-2.275.741-8.742 3.523-11.134 4.875v8.787h23.277v-8.462c-3.172.539-12.675 3.367-16.998 5.59z" />
+                </g>
+              </svg>
+              <div
+                style={{
+                  fontSize: "0.8125rem",
+                  color: "rgba(46,46,56,0.5)",
+                  lineHeight: 1.5,
+                  textAlign: "center",
+                }}
+              >
+                In conversations with{" "}
+                <span style={{ fontWeight: 600, color: CHARCOAL }}>Zillow</span> about
+                AI-powered staging
+              </div>
+            </div>
+
+            {/* Dwelly */}
+            <div
+              style={{
+                flex: 1,
+                background: "rgba(236,230,219,0.25)",
+                border: "1px solid rgba(236,230,219,0.5)",
+                borderRadius: "1.25rem",
+                padding: "1.5rem",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.625rem",
+              }}
+            >
+              <svg
+                viewBox="0 0 383.09 323.88"
+                style={{ width: "32px", height: "28px" }}
+              >
+                <defs>
+                  <linearGradient id="dw1" x1="-47.79" y1="306.07" x2="228.38" y2="34.96" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#7aecc3" />
+                    <stop offset=".5" stopColor="#efec53" />
+                    <stop offset="1" stopColor="#92cef6" />
+                  </linearGradient>
+                  <linearGradient id="dw2" x1="29.94" y1="384.58" x2="305.34" y2="114.23" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#7aecc3" />
+                    <stop offset=".5" stopColor="#efec53" />
+                    <stop offset="1" stopColor="#92cef6" />
+                  </linearGradient>
+                </defs>
+                <path fill="#2e2e38" d="M92.32,106.79c-.38,0-.69.12-.92.35-.24.24-.35.5-.35.78v139.32c0,.38.12.66.35.85.24.19.54.28.92.28h158.72c11.79,0,21.87-4.11,30.23-12.32,8.35-8.21,12.53-18.12,12.53-29.73v-57.34c0-11.61-4.18-21.54-12.53-29.8-8.36-8.26-18.43-12.39-30.23-12.39H92.32ZM258.82,145.16v64.99c0,2.08-.78,3.87-2.34,5.38-1.56,1.51-3.38,2.27-5.45,2.27h-124.88v-80.28h124.88c2.07,0,3.89.73,5.45,2.19,1.56,1.46,2.34,3.28,2.34,5.45Z" />
+                <path fill="url(#dw1)" d="M35.52,145.48v-60.79L181.48,26s178.67,54.62,201.61,59.21L172.6,0S0,57.04,0,57.04c.02,3.51,0,56.71,0,56.71l35.52,31.73Z" />
+                <path fill="url(#dw2)" d="M373.68,162.92h-20.46c-4.09,0-7.41,3.32-7.41,7.41v110.89c0,4.09-3.32,7.41-7.41,7.41H42.93c-4.09,0-7.41-3.32-7.41-7.41v-101.73L0,147.76v145.22c0,16.38,13.27,30.91,29.64,30.91h321.82c16.38,0,29.63-14.53,29.63-30.91v-122.65c0-4.09-3.32-7.41-7.41-7.41Z" />
+              </svg>
+              <div
+                style={{
+                  fontSize: "0.8125rem",
+                  color: "rgba(46,46,56,0.5)",
+                  lineHeight: 1.5,
+                  textAlign: "center",
+                }}
+              >
+                Exploring partnerships with{" "}
+                <span style={{ fontWeight: 600, color: CHARCOAL }}>Dwelly</span> for
+                AI-assisted lettings
+              </div>
+            </div>
+          </div>
+        </div>
+      </SlideLayout>
+    ),
+  },
+
+  // ── 3. PROBLEM (was 2) ──
   {
     bg: WHITE,
     render: () => (
@@ -236,9 +468,9 @@ const SLIDES: Slide[] = [
               marginBottom: "3rem",
             }}
           >
-            One agent that handles the entire journey — from understanding your style through
-            natural conversation, to curating real furniture, to placing it in a 3D model of your
-            space, to checkout.
+            A team of specialized AI agents that orchestrate the entire journey &mdash; from
+            understanding your style through natural conversation, to curating real furniture, to
+            placing it in a 3D model of your space, to checkout.
           </p>
           <div
             style={{
@@ -401,7 +633,7 @@ const SLIDES: Slide[] = [
               textAlign: "center",
             }}
           >
-            Architecture
+            Multi-Agent Architecture
           </p>
           <h2
             style={{
@@ -414,39 +646,46 @@ const SLIDES: Slide[] = [
               marginBottom: "3rem",
             }}
           >
-            Built with the best
+            Five agents, one pipeline
           </h2>
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
               gap: "1.25rem",
             }}
           >
             {[
               {
-                layer: "Intelligence",
+                layer: "Consultation Agent",
                 items: [
-                  "Claude Opus 4.6 \u2014 planning & reasoning",
-                  "Gemini 3.1 Pro \u2014 floorplan analysis & spatial placement",
-                  "ElevenLabs \u2014 voice consultation agent",
+                  "ElevenLabs voice AI \u2014 interviews the user",
+                  "Extracts style, budget & room preferences",
+                  "Builds a structured design brief",
                 ],
               },
               {
-                layer: "3D Pipeline",
+                layer: "Curation Agent",
                 items: [
-                  "TRELLIS 2 via fal.ai \u2014 3D room generation",
-                  "Hunyuan3D v2 \u2014 furniture model fallback",
-                  "React Three Fiber \u2014 interactive 3D viewer",
+                  "Claude Opus 4.6 \u2014 generates a shopping list",
+                  "Searches real IKEA catalogs in parallel",
+                  "Scores & ranks matches against the brief",
                 ],
               },
               {
-                layer: "Platform",
+                layer: "Spatial Agent",
                 items: [
-                  "Next.js 15 + React 19 \u2014 frontend",
-                  "FastAPI + Python 3.12 \u2014 backend",
-                  "Supabase \u2014 database & auth",
-                  "Stripe \u2014 payments",
+                  "Gemini 3.1 Pro \u2014 analyzes floorplan geometry",
+                  "TRELLIS 2 via fal.ai \u2014 generates 3D room",
+                  "Computes furniture placement coordinates",
+                ],
+              },
+              {
+                layer: "Rendering + Checkout",
+                items: [
+                  "React Three Fiber \u2014 interactive 3D scene",
+                  "Stripe Agent Toolkit \u2014 one-click purchase",
+                  "Supabase \u2014 durable session state",
                 ],
               },
             ].map((col) => (

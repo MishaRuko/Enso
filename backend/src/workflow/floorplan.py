@@ -252,8 +252,8 @@ async def process_floorplan(session_id: str) -> FloorplanAnalysis:
             _trace_event(
                 "room_3d", "Room GLB generated",
                 duration_ms=round(duration_ms),
-                input_image=fal_image_url,
-                output_image=room_glb_url,
+                image_url=fal_image_url,
+                glb_url=room_glb_url,
                 model="fal-ai/trellis-2",
             )
         )

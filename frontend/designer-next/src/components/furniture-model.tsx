@@ -118,8 +118,12 @@ interface FurnitureModelProps {
 }
 
 function proxyGlbUrl(url: string): string {
-  if (url.includes("ikea.com") || url.includes("ikea-static")) {
-    return `/api/proxy-glb?url=${encodeURIComponent(url)}`;
+  if (
+    url.includes("ikea.com") ||
+    url.includes("ikea-static") ||
+    url.includes("digitaloceanspaces.com")
+  ) {
+    return `/proxy-glb?url=${encodeURIComponent(url)}`;
   }
   return url;
 }

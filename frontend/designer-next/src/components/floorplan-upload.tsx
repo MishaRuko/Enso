@@ -14,6 +14,7 @@ export function FloorplanUpload({ sessionId, onUploaded }: FloorplanUploadProps)
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"fast" | "pro">("fast");
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -27,7 +28,7 @@ export function FloorplanUpload({ sessionId, onUploaded }: FloorplanUploadProps)
       setError(null);
 
       try {
-        await uploadFloorplan(sessionId, file);
+        await uploadFloorplan(sessionId, file, mode);
         onUploaded?.();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Upload failed");
@@ -35,7 +36,7 @@ export function FloorplanUpload({ sessionId, onUploaded }: FloorplanUploadProps)
         setUploading(false);
       }
     },
-    [sessionId, onUploaded],
+    [sessionId, onUploaded, mode],
   );
 
   function handleDrop(e: React.DragEvent) {
@@ -198,6 +199,65 @@ export function FloorplanUpload({ sessionId, onUploaded }: FloorplanUploadProps)
           onChange={handleChange}
           style={{ display: "none" }}
         />
+      </div>
+
+      {/* Mode toggle */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.5rem",
+          marginTop: "1.25rem",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.25rem",
+            background: "rgba(250,249,247,0.9)",
+            backdropFilter: "blur(12px)",
+            padding: "3px",
+            borderRadius: "var(--radius-full)",
+            border: "1px solid rgba(236,230,219,0.5)",
+          }}
+        >
+          {(["fast", "pro"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              style={{
+                padding: "0.375rem 1.25rem",
+                borderRadius: "var(--radius-full)",
+                border: "none",
+                fontSize: "0.8125rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                background:
+                  mode === m ? (m === "pro" ? "#1a1a38" : "var(--accent)") : "transparent",
+                color: mode === m ? "#fff" : "var(--text-3)",
+              }}
+            >
+              {m === "fast" ? "Fast" : "Pro"}
+            </button>
+          ))}
+        </div>
+        <p
+          style={{
+            fontSize: "0.75rem",
+            color: "var(--muted)",
+            maxWidth: 280,
+            textAlign: "center",
+            lineHeight: 1.4,
+          }}
+        >
+          {mode === "fast"
+            ? "Gemini spatial reasoning — quick results"
+            : "Gurobi integer programming — optimized placement"}
+        </p>
       </div>
 
       {error && (

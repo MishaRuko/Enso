@@ -41,10 +41,14 @@ export function toggleDemo(sessionId: string): Promise<{ demo_selected: boolean 
 
 // --- Floorplan ---
 
-export function uploadFloorplan(sessionId: string, file: File): Promise<{ room_data: unknown }> {
+export function uploadFloorplan(
+  sessionId: string,
+  file: File,
+  mode: "fast" | "pro" = "fast",
+): Promise<{ room_data: unknown }> {
   const formData = new FormData();
   formData.append("file", file);
-  return apiFetch(`/api/sessions/${sessionId}/floorplan`, {
+  return apiFetch(`/api/sessions/${sessionId}/floorplan?mode=${mode}`, {
     method: "POST",
     body: formData,
   });
