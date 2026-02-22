@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const VoiceAgent = dynamic(() => import("@/components/voice-agent"), { ssr: false });
 import TextIntake from "@/components/text-intake";
@@ -58,9 +58,24 @@ export default function ConsultationPage() {
     setBriefSummary(brief);
   }, []);
 
-  const handleMiroBoardCreated = useCallback((url: string, _boardId: string) => {
-    setMiroBoardUrl(url);
-  }, []);
+  // Poll for miro_board_url so the right panel updates when the board is ready.
+  useEffect(() => {
+    if (miroBoardUrl) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.miro_board_url) {
+          setMiroBoardUrl(data.miro_board_url as string);
+          clearInterval(interval);
+        }
+      } catch {
+        // ignore
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [sessionId, miroBoardUrl]);
 
   const handleIntakeComplete = useCallback(
     (_miroUrl: string) => {
@@ -79,22 +94,17 @@ export default function ConsultationPage() {
         body: JSON.stringify(preferences),
       });
 
-      // If the board wasn't created mid-consultation, generate it now with
-      // the full set of preferences we just saved.
-      if (!miroBoardUrl) {
-        const miroRes = await fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
-        if (miroRes.ok) {
-          const miroData = await miroRes.json();
-          setMiroBoardUrl(miroData.miro_board_url as string);
-        }
-      }
+      // Kick off Miro generation in the background (non-blocking).
+      // The session page will poll for miro_board_url when it appears.
+      fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" }).catch(() => {});
 
       router.push(`/session/${sessionId}`);
     } catch (err) {
       console.error("Failed to save preferences:", err);
+    } finally {
       setSaving(false);
     }
-  }, [preferences, miroBoardUrl, sessionId, router]);
+  }, [preferences, sessionId, router]);
 
   // In text mode, show full-width text intake; in voice mode, show two-column layout
   if (textMode) {
@@ -294,7 +304,6 @@ export default function ConsultationPage() {
             onMoodBoardAdd={handleMoodBoardAdd}
             onPreferenceUpdate={handlePreferenceUpdate}
             onRoomTypeSet={handleRoomTypeSet}
-            onMiroBoardCreated={handleMiroBoardCreated}
             onComplete={handleComplete}
           />
         </div>
@@ -333,7 +342,7 @@ export default function ConsultationPage() {
                   display: "inline-block",
                 }}
               />
-              Saving...
+              Saving preferences...
             </>
           ) : (
             <>

@@ -10,7 +10,6 @@ interface VoiceAgentProps {
   onMoodBoardAdd: (item: MoodBoardItem) => void;
   onPreferenceUpdate: (key: string, value: unknown) => void;
   onRoomTypeSet: (type: string) => void;
-  onMiroBoardCreated: (url: string, boardId: string) => void;
   onComplete: () => void;
 }
 
@@ -20,12 +19,10 @@ export default function VoiceAgent({
   onMoodBoardAdd,
   onPreferenceUpdate,
   onRoomTypeSet,
-  onMiroBoardCreated,
   onComplete,
 }: VoiceAgentProps) {
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string[]>([]);
-  const miroBoardIdRef = useRef<string | null>(null);
   // Mirrors the accumulated ElevenLabs preferences so create_vision_board
   // can save them to the DB before generating the Miro board.
   const preferencesRef = useRef<Record<string, unknown>>({});
@@ -77,17 +74,6 @@ export default function VoiceAgent({
               preferencesRef.current = { ...preferencesRef.current, [params.key]: params.value };
             }
             onPreferenceUpdate(params.key, params.value);
-            if (miroBoardIdRef.current) {
-              fetch(`/api/sessions/${sessionId}/miro/item`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  board_id: miroBoardIdRef.current,
-                  label: params.key,
-                  value: String(params.value),
-                }),
-              }).catch(() => {});
-            }
             return "Preference updated";
           },
           set_room_type: (params: { type: string }) => {
@@ -104,15 +90,10 @@ export default function VoiceAgent({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(preferencesRef.current),
               });
-              const res = await fetch(`/api/sessions/${sessionId}/miro`, {
-                method: "POST",
-              });
-              if (!res.ok) throw new Error(`Miro API ${res.status}`);
-              const data = await res.json();
-              const boardId = data.board_id as string;
-              miroBoardIdRef.current = boardId;
-              onMiroBoardCreated(data.miro_board_url as string, boardId);
-              return "Vision board created successfully";
+              // Kick off board generation (non-blocking — returns pending immediately).
+              // The consultation page will poll for miro_board_url and display it when ready.
+              await fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
+              return "Vision board is being generated and will be ready in a couple of minutes";
             } catch {
               return "Vision board creation failed, continuing without it";
             }
@@ -134,7 +115,6 @@ export default function VoiceAgent({
     onMoodBoardAdd,
     onPreferenceUpdate,
     onRoomTypeSet,
-    onMiroBoardCreated,
     onComplete,
   ]);
 
