@@ -51,8 +51,8 @@ STEP 3 — BUDGET
   Parse into min/max. If they say "around $3,000", use 2500–3500. If they say "under $2k",
   use 0–2000.
   Tool calls:
-    update_preference(key="budget_min", value=2500)
-    update_preference(key="budget_max", value=3500)
+    update_preference(key="budget_min", value="2500")
+    update_preference(key="budget_max", value="3500")
     update_preference(key="currency", value="USD")
 
 STEP 3.5 — VISION BOARD (silent)
@@ -67,29 +67,39 @@ STEP 4 — COLORS
   Ask: "What colors or palette are you imagining? Anything you love — or anything
   you'd like to avoid?"
   Extract 2-5 colors or descriptors (e.g., "warm whites", "terracotta", "sage green").
-  Tool call: update_preference(key="colors", value=["warm white", "sage green", "oak wood"])
+  Call update_preference once per color:
+    update_preference(key="colors", value="warm white")
+    update_preference(key="colors", value="sage green")
+    update_preference(key="colors", value="oak wood")
 
 STEP 5 — LIFESTYLE
   Ask: "Tell me a bit about how you use this room day to day. Do you work from home?
   Have kids or pets? Do you entertain a lot?"
-  Extract lifestyle tags from their answer.
-  Tool call: update_preference(key="lifestyle", value=["works from home", "has a cat", "hosts dinner parties"])
+  Extract lifestyle tags from their answer. Call once per tag:
+    update_preference(key="lifestyle", value="works from home")
+    update_preference(key="lifestyle", value="has a cat")
+    update_preference(key="lifestyle", value="hosts dinner parties")
 
 STEP 6 — MUST-HAVES
   Ask: "Is there anything you absolutely need in this room — a specific piece of
   furniture, extra storage, a reading nook?"
-  Tool call: update_preference(key="must_haves", value=["large sectional", "built-in storage"])
+  Call once per item:
+    update_preference(key="must_haves", value="large sectional")
+    update_preference(key="must_haves", value="built-in storage")
 
 STEP 7 — DEALBREAKERS
   Ask: "And what are the dealbreakers — anything you really don't want, whether
   it's a style, material, or colour?"
-  Tool call: update_preference(key="dealbreakers", value=["all-white furniture", "glass tables"])
+  Call once per item:
+    update_preference(key="dealbreakers", value="all-white furniture")
+    update_preference(key="dealbreakers", value="glass tables")
 
 STEP 8 — EXISTING FURNITURE
   Ask: "Do you already have any furniture in the room that we need to work around,
   or are you starting fresh?"
-  If they have pieces, note them.
-  Tool call: update_preference(key="existing_furniture", value=["tan leather sofa", "oak bookshelf"])
+  If they have pieces, note them. Call once per item:
+    update_preference(key="existing_furniture", value="tan leather sofa")
+    update_preference(key="existing_furniture", value="oak bookshelf")
 
 STEP 9 — WRAP UP
   Give a brief, enthusiastic summary of what you've collected:
@@ -155,13 +165,14 @@ CLIENT_TOOLS = [
     {
         "name": "update_preference",
         "description": (
-            "Save a single design preference. Call this immediately after the user provides each piece "
-            "of information — don't batch multiple preferences into one call. "
+            "Save a single design preference. Always call this with ONE value at a time — "
+            "never batch multiple values into one call. "
             "Valid keys: style, budget_min, budget_max, currency, colors, lifestyle, must_haves, "
             "dealbreakers, existing_furniture. "
-            "For array fields (colors, lifestyle, must_haves, dealbreakers, existing_furniture) pass a list. "
-            "For numeric fields (budget_min, budget_max) pass a number. "
-            "For string fields (style, currency) pass a string."
+            "For array fields (colors, lifestyle, must_haves, dealbreakers, existing_furniture) "
+            "call this tool once per item — e.g. call it three times for three colors. "
+            "For numeric fields (budget_min, budget_max) pass the number as a string, e.g. '2500'. "
+            "For string fields (style, currency) pass the value directly."
         ),
         "parameters": {
             "type": "object",
@@ -182,7 +193,12 @@ CLIENT_TOOLS = [
                     ],
                 },
                 "value": {
-                    "description": "The preference value. String, number, or array of strings depending on the key.",
+                    "type": "string",
+                    "description": (
+                        "The preference value as a string. "
+                        "For numeric fields like budget_min/budget_max, pass the number as a string (e.g. '2500'). "
+                        "For array fields, call this tool once per item."
+                    ),
                 },
             },
             "required": ["key", "value"],

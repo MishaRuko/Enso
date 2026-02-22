@@ -64,16 +64,23 @@ export default function VoiceAgent({
             });
             return "Image added to mood board";
           },
-          update_preference: (params: { key: string; value: unknown }) => {
-            // Accumulate into ref (array fields append, scalar fields overwrite)
+          update_preference: (params: { key: string; value: string }) => {
+            // All values arrive as strings from ElevenLabs.
+            // Numeric fields are coerced; array fields are appended one item at a time.
             const arrayFields = ["colors", "lifestyle", "must_haves", "dealbreakers", "existing_furniture"];
-            if (arrayFields.includes(params.key) && typeof params.value === "string") {
+            const numericFields = ["budget_min", "budget_max"];
+            let coerced: unknown = params.value;
+            if (numericFields.includes(params.key)) {
+              const n = Number(params.value);
+              coerced = Number.isNaN(n) ? 0 : n;
+            }
+            if (arrayFields.includes(params.key)) {
               const current = (preferencesRef.current[params.key] as string[] | undefined) ?? [];
               preferencesRef.current = { ...preferencesRef.current, [params.key]: [...current, params.value] };
             } else {
-              preferencesRef.current = { ...preferencesRef.current, [params.key]: params.value };
+              preferencesRef.current = { ...preferencesRef.current, [params.key]: coerced };
             }
-            onPreferenceUpdate(params.key, params.value);
+            onPreferenceUpdate(params.key, coerced);
             return "Preference updated";
           },
           set_room_type: (params: { type: string }) => {

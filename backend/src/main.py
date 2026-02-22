@@ -197,6 +197,7 @@ async def create_miro_board(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     preferences = session.get("preferences") or {}
     brief = _preferences_to_brief(preferences)
+    logging.getLogger("miro_task").info("Generating Miro board for %s with brief: %s", session_id, brief)
 
     async def _run_miro():
         try:
@@ -210,12 +211,17 @@ async def create_miro_board(session_id: str):
     return {"status": "pending", "miro_board_url": None, "board_id": None}
 
 
+_pref_log = logging.getLogger("preferences")
+
+
 @app.post("/api/sessions/{session_id}/preferences")
 async def save_preferences(session_id: str, prefs: UserPreferences):
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    updated = db.update_session(session_id, {"preferences": prefs.model_dump(), "status": "consulting"})
+    dumped = prefs.model_dump()
+    _pref_log.info("Saving preferences for %s: %s", session_id, dumped)
+    updated = db.update_session(session_id, {"preferences": dumped, "status": "consulting"})
     return updated
 
 
