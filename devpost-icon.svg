@@ -1,0 +1,8 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Vermillion background with rounded corners -->
+  <rect width="512" height="512" rx="96" fill="#db504a"/>
+  <!-- Enso brushstroke, centered and scaled -->
+  <g transform="translate(86, 86) scale(5.67)">
+    <path d="M55 26C57 12 44 2 29 3C14 3 2 15 3 31C3 47 15 57 32 57C44 56 51 48 51 41C48 46 40 51 31 50C19 50 11 42 12 30C11 17 19 9 30 10C41 10 50 17 49 28Q52 24 55 26Z" fill="#faf9f7"/>
+  </g>
+</svg>

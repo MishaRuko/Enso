@@ -16,10 +16,12 @@ export const SCENE_STARTS_SEC = [
   27.2,     // flythrough — "and watch AI transform…" (clip 4.1s)
   31.8,     // furniture — "Every piece is real…" (clip 6.2s)
   38.5,     // purchase — "Love the result?…" (clip 3.1s)
-  42.1,     // outro — "Your space, complete." (clip 1.6s)
+  42.1,     // demo-1 — screen recording 1 (32.6s)
+  74.8,     // demo-2 — screen recording 2 (53.2s)
+  128.0,    // outro — "Your space, complete." (clip 1.6s)
 ];
 
-export const TOTAL_DURATION_SEC = 46.0;
+export const TOTAL_DURATION_SEC = 131.5;
 
 export function beatSyncedDurations(): number[] {
   return SCENE_STARTS_SEC.map((t, i) => {

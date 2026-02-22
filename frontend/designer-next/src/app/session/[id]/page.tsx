@@ -180,7 +180,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     "placing",
     "placing_furniture",
   ].includes(currentStatus);
-  const isComplete = currentStatus === "complete" || currentStatus === "placement_ready";
+  const isComplete = currentStatus === "complete" || currentStatus === "placement_ready" || currentStatus === "checkout";
   const canRunPipeline = currentStatus === "floorplan_ready" || currentStatus === "consulting";
 
   async function handleRunPipeline() {
