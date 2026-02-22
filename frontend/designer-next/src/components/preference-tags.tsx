@@ -4,6 +4,7 @@ import type { UserPreferences } from "@/lib/types";
 
 interface PreferenceTagsProps {
   preferences: Partial<UserPreferences>;
+  onRemove?: (key: string, value: string) => void;
 }
 
 const COLORS: Record<string, string> = {
@@ -17,14 +18,20 @@ const COLORS: Record<string, string> = {
   "Has already": "#6366f1",
 };
 
-export default function PreferenceTags({ preferences }: PreferenceTagsProps) {
-  const tags: { label: string; value: string }[] = [];
+interface Tag {
+  label: string;
+  value: string;
+  key: string;
+}
+
+export default function PreferenceTags({ preferences, onRemove }: PreferenceTagsProps) {
+  const tags: Tag[] = [];
 
   if (preferences.style) {
-    tags.push({ label: "Style", value: preferences.style });
+    tags.push({ label: "Style", value: preferences.style, key: "style" });
   }
   if (preferences.room_type) {
-    tags.push({ label: "Room", value: preferences.room_type });
+    tags.push({ label: "Room", value: preferences.room_type, key: "room_type" });
   }
   if (preferences.budget_min || preferences.budget_max) {
     const min = preferences.budget_min ?? 0;
@@ -36,22 +43,22 @@ export default function PreferenceTags({ preferences }: PreferenceTagsProps) {
         : max
           ? `up to ${max.toLocaleString()} ${currency}`
           : `from ${min.toLocaleString()} ${currency}`;
-    tags.push({ label: "Budget", value: range });
+    tags.push({ label: "Budget", value: range, key: "budget" });
   }
   for (const c of preferences.colors ?? []) {
-    tags.push({ label: "Color", value: c });
+    tags.push({ label: "Color", value: c, key: "colors" });
   }
   for (const l of preferences.lifestyle ?? []) {
-    tags.push({ label: "Lifestyle", value: l });
+    tags.push({ label: "Lifestyle", value: l, key: "lifestyle" });
   }
   for (const m of preferences.must_haves ?? []) {
-    tags.push({ label: "Must-have", value: m });
+    tags.push({ label: "Must-have", value: m, key: "must_haves" });
   }
   for (const d of preferences.dealbreakers ?? []) {
-    tags.push({ label: "Avoid", value: d });
+    tags.push({ label: "Avoid", value: d, key: "dealbreakers" });
   }
   for (const e of preferences.existing_furniture ?? []) {
-    tags.push({ label: "Has already", value: e });
+    tags.push({ label: "Has already", value: e, key: "existing_furniture" });
   }
 
   if (tags.length === 0) {
@@ -75,12 +82,12 @@ export default function PreferenceTags({ preferences }: PreferenceTagsProps) {
         const color = COLORS[tag.label] ?? "#6b7280";
         return (
           <span
-            key={`${tag.label}-${tag.value}-${i}`}
+            key={`${tag.key}-${tag.value}-${i}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "0.375rem",
-              padding: "0.3125rem 0.75rem",
+              padding: "0.3125rem 0.625rem",
               borderRadius: "var(--radius-full)",
               fontSize: "0.8125rem",
               fontWeight: 500,
@@ -103,6 +110,34 @@ export default function PreferenceTags({ preferences }: PreferenceTagsProps) {
               {tag.label}
             </span>
             {tag.value}
+            {onRemove && (
+              <button
+                type="button"
+                onClick={() => onRemove(tag.key, tag.value)}
+                title={`Remove ${tag.label}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginLeft: "0.125rem",
+                  width: "14px",
+                  height: "14px",
+                  borderRadius: "50%",
+                  background: "transparent",
+                  border: "none",
+                  color: color,
+                  cursor: "pointer",
+                  opacity: 0.5,
+                  padding: 0,
+                  lineHeight: 1,
+                  fontSize: "0.875rem",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+              >
+                ×
+              </button>
+            )}
           </span>
         );
       })}

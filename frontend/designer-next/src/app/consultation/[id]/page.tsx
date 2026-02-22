@@ -29,6 +29,17 @@ export default function ConsultationPage() {
   const [_briefSummary, setBriefSummary] = useState<Record<string, any>>({});
   const [miroBoardUrl, setMiroBoardUrl] = useState<string | null>(null);
 
+  // Count only preferences that actually render as tags (non-empty values).
+  const tagCount =
+    (preferences.style ? 1 : 0) +
+    (preferences.room_type ? 1 : 0) +
+    (preferences.budget_min || preferences.budget_max ? 1 : 0) +
+    (preferences.colors?.length ?? 0) +
+    (preferences.lifestyle?.length ?? 0) +
+    (preferences.must_haves?.length ?? 0) +
+    (preferences.dealbreakers?.length ?? 0) +
+    (preferences.existing_furniture?.length ?? 0);
+
   const handleMoodBoardAdd = useCallback((item: MoodBoardItem) => {
     setMoodItems((prev) => [...prev, item]);
   }, []);
@@ -84,20 +95,22 @@ export default function ConsultationPage() {
     [sessionId, router],
   );
 
+  // Pure navigation — used as onComplete by VoiceAgent so the agent's complete_consultation
+  // tool can save preferences from preferencesRef (always current) before calling this.
+  const handleNavigate = useCallback(() => {
+    router.push(`/session/${sessionId}`);
+  }, [sessionId, router]);
+
+  // Manual "Skip to Design Phase" button — saves the React preferences state directly.
   const handleComplete = useCallback(async () => {
     setSaving(true);
     try {
-      // Save all accumulated ElevenLabs preferences to the backend.
       await fetch(`/api/sessions/${sessionId}/preferences`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(preferences),
       });
-
-      // Kick off Miro generation in the background (non-blocking).
-      // The session page will poll for miro_board_url when it appears.
       fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" }).catch(() => {});
-
       router.push(`/session/${sessionId}`);
     } catch (err) {
       console.error("Failed to save preferences:", err);
@@ -304,7 +317,7 @@ export default function ConsultationPage() {
             onMoodBoardAdd={handleMoodBoardAdd}
             onPreferenceUpdate={handlePreferenceUpdate}
             onRoomTypeSet={handleRoomTypeSet}
-            onComplete={handleComplete}
+            onComplete={handleNavigate}
           />
         </div>
 
@@ -405,23 +418,37 @@ export default function ConsultationPage() {
               <line x1="17" y1="16" x2="23" y2="16" />
             </svg>
             <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>Collected Preferences</h2>
-            {Object.keys(preferences).length > 0 && (
+            {tagCount > 0 && (
               <span
+                key={tagCount}
                 style={{
                   fontSize: "0.6875rem",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   padding: "0.125rem 0.5rem",
                   borderRadius: "var(--radius-full)",
-                  background: "rgba(139,92,246,0.1)",
+                  background: "rgba(139,92,246,0.15)",
                   color: "var(--accent)",
                   animation: "fadeIn 0.2s ease-out",
                 }}
               >
-                {Object.keys(preferences).length}
+                {tagCount}
               </span>
             )}
           </div>
-          <PreferenceTags preferences={preferences} />
+          <PreferenceTags
+            preferences={preferences}
+            onRemove={(key, value) => {
+              setPreferences((prev) => {
+                const arr = prev[key as keyof UserPreferences];
+                if (Array.isArray(arr)) {
+                  const next = arr.filter((v) => v !== value);
+                  return { ...prev, [key]: next };
+                }
+                const { [key as keyof UserPreferences]: _, ...rest } = prev;
+                return rest;
+              });
+            }}
+          />
         </div>
 
         {/* Mood Board / Vision Board — fills remaining space */}

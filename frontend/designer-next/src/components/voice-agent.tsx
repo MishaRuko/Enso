@@ -98,7 +98,19 @@ export default function VoiceAgent({
               return "Vision board creation failed, continuing without it";
             }
           },
-          complete_consultation: () => {
+          complete_consultation: async () => {
+            // Use preferencesRef.current — NOT onComplete's stale closure over React state.
+            // By the time the agent calls this, preferencesRef has all accumulated data.
+            try {
+              await fetch(`/api/sessions/${sessionId}/preferences`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(preferencesRef.current),
+              });
+              fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" }).catch(() => {});
+            } catch {
+              // navigate even on save failure
+            }
             onComplete();
             return "Consultation complete, navigating to design phase";
           },
