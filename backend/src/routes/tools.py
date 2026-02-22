@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from ..agents.voice_intake import run_voice_intake_turn
 from ..db import get_voice_intake_session, save_voice_intake_session
-from ..tools.miro import create_board_from_brief
+from ..tools.miro_mcp import BoardResult, generate_vision_board_with_miro_ai
 
 logger = logging.getLogger(__name__)
 
@@ -115,14 +115,18 @@ async def finalize(req: FinalizeRequest):
 
     # Create Miro board from brief — degrade gracefully if it fails
     try:
-        board_url = create_board_from_brief(session["brief"])
+        result = generate_vision_board_with_miro_ai(session["brief"])
     except Exception:
         logger.exception("Miro board creation failed, using demo fallback")
-        board_url = "https://miro.com/app/board/demo/"
+        result = BoardResult(url="https://miro.com/app/board/demo/")
 
-    session["miro"]["board_url"] = board_url
+    session["miro"]["board_url"]   = result.url
+    session["miro"]["layout_plan"] = result.layout_plan
     session["status"] = "finalized"
     save_voice_intake_session(session)
-    logger.info(f"Session {req.session_id} finalized with board: {board_url}")
+    logger.info(
+        "Session %s finalized: board=%s pass2=%s",
+        req.session_id, result.url, result.pass2_applied,
+    )
 
-    return {"miro_board_url": board_url}
+    return {"miro_board_url": result.url}

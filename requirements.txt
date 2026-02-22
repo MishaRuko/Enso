@@ -34,6 +34,9 @@ fal-client>=0.5.0
 # Database (Supabase)
 supabase>=2.0.0
 
+# MCP (Model Context Protocol) — optional, enables Miro MCP tier
+mcp>=1.0.0
+
 # Development & Linting (Optional)
 ruff>=0.15.1
 pytest>=8.0.0

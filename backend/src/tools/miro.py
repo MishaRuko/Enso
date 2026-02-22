@@ -6,7 +6,7 @@ import re
 
 import httpx
 
-from ..config import MIRO_API_TOKEN, OPENROUTER_API_KEY, PEXELS_API_KEY
+from ..config import MIRO_API_TOKEN, MIRO_TEMPLATE_BOARD_ID, OPENROUTER_API_KEY, PEXELS_API_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -15,64 +15,42 @@ _MIRO_API_BASE = "https://api.miro.com/v2"
 _LAYOUT_MODEL = "anthropic/claude-haiku-4-5"
 
 # ---------------------------------------------------------------------------
-# Vision board slot template — Pinterest-style irregular composition
+# Fallback slot template — used when no MIRO_TEMPLATE_BOARD_ID is set.
 # (x, y, width_px) — board-centre coordinates.
-#
-# Sizes:  hero = 640 px  |  medium = 460-520 px  |  small = 360 px
-#
-# Row centres (computed for aspect ratio 1.44:1, ~40 px vertical gap):
-#   Row 1  y ≈ −780   Row 2  y ≈ −330   Row 3  y ≈ +55   Row 4  y ≈ +432
-# Horizontal gaps ≈ 40-50 px between columns (≈ 3 % of board width).
-#
-# Board footprint: x ≈ −780 … +760, y ≈ −1000 … +600
-# Sticky columns sit outside at x ≈ −1110 and +1020 (never overlap images).
 # ---------------------------------------------------------------------------
 _IMG_SLOTS = [
-    # ── ROW 1 — hero anchor ─────────────────────────────────────────────────
-    (-460, -780, 640),   # 0  HERO — largest, top-left
-    ( 130, -770, 460),   # 1  medium  (40 px x-gap from hero)
-    ( 580, -785, 360),   # 2  small accent, top-right
-
-    # ── ROW 2 ────────────────────────────────────────────────────────────────
-    (-580, -330, 360),   # 3  small, far-left
-    (-100, -337, 520),   # 4  medium-large (40 px gap from slot 3)
-    ( 430, -325, 460),   # 5  medium right (40 px gap from slot 4)
-
-    # ── ROW 3 ────────────────────────────────────────────────────────────────
-    (-530,   55, 460),   # 6  medium left
-    ( -70,   50, 360),   # 7  small centre (50 px gap from slot 6)
-    ( 400,   51, 480),   # 8  medium right (50 px gap from slot 7)
-
-    # ── ROW 4 — bottom zone ──────────────────────────────────────────────────
-    (-550,  432, 360),   # 9  small bottom-left
-    ( -80,  432, 500),   # 10 medium bottom-centre (40 px gap from slot 9)
-    ( 390,  432, 360),   # 11 small bottom-right  (40 px gap from slot 10)
+    (-360, -760, 560),   # 0  HERO
+    ( 130, -790, 400),   # 1  medium
+    ( 490, -775, 300),   # 2  small
+    (-420, -410, 300),   # 3  small
+    ( -30, -411, 460),   # 4  medium-large
+    ( 390, -400, 360),   # 5  medium
+    (-355, -120, 370),   # 6  medium
+    ( -10, -118, 300),   # 7  small
+    ( 345, -115, 390),   # 8  medium
+    (-375,  168, 300),   # 9  small
+    (   0,  168, 430),   # 10 medium
+    ( 375,  168, 300),   # 11 small
 ]
 
-# ---------------------------------------------------------------------------
-# Sticky note columns — flanking the image canvas, never overlapping images.
-# y values aligned to the four image row centres so notes feel visually tied.
-# Left  (x ≈ −1110) : aesthetic info — style, vibe, avoid, notes
-# Right (x ≈ +1020) : practical info — budget, rooms, must-haves, constraints
-# ---------------------------------------------------------------------------
 _STICKY_COLS: dict[str, tuple[str, int, int]] = {
-    "BUDGET":      ("light_yellow",  1020, -800),
-    "ROOMS":       ("light_green",   1020, -340),
-    "MUST HAVES":  ("light_pink",    1020,   50),
-    "CONSTRAINTS": ("gray",          1020,  430),
-    "STYLE":       ("light_blue",   -1110, -800),
-    "VIBE":        ("cyan",         -1110, -340),
-    "AVOID":       ("red",          -1110,   50),
-    "NOTES":       ("white",        -1110,  430),
+    "BUDGET":      ("light_yellow",  1020, -790),
+    "ROOMS":       ("light_green",   1020, -410),
+    "MUST HAVES":  ("light_pink",    1020, -120),
+    "CONSTRAINTS": ("gray",          1020,  168),
+    "STYLE":       ("light_blue",   -1110, -790),
+    "VIBE":        ("cyan",         -1110, -410),
+    "AVOID":       ("red",          -1110, -120),
+    "NOTES":       ("white",        -1110,  168),
 }
 
 
 # ---------------------------------------------------------------------------
-# Public API — signature unchanged
+# Public API
 # ---------------------------------------------------------------------------
 
 def create_board_from_brief(brief: dict) -> str:
-    """Create a real Miro board from a design brief and return its URL."""
+    """Create a Miro board from a design brief and return its URL."""
     if not MIRO_API_TOKEN:
         logger.warning("MIRO_API_TOKEN not set, returning demo board URL")
         return _DEMO_BOARD_URL
@@ -84,6 +62,15 @@ def create_board_from_brief(brief: dict) -> str:
     }
 
     with httpx.Client(timeout=60.0) as client:
+        if MIRO_TEMPLATE_BOARD_ID:
+            board_id, board_url = _copy_template_board(client, miro_headers)
+            if board_id:
+                logger.info("Using template board copy: %s", board_url)
+                _populate_template_board(client, miro_headers, board_id, brief)
+                return board_url
+            logger.warning("Template board copy failed — falling back to generated layout")
+
+        # Fallback: create a blank board and generate layout programmatically
         resp = client.post(
             f"{_MIRO_API_BASE}/boards",
             headers=miro_headers,
@@ -105,14 +92,257 @@ def create_board_from_brief(brief: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 1 — Layout planning (Claude produces themed groups)
+# Template path — copy board, detect diamonds, populate
+# ---------------------------------------------------------------------------
+
+def _copy_template_board(
+    client: httpx.Client,
+    headers: dict,
+) -> tuple[str, str] | tuple[None, None]:
+    """Copy the template board and return (new_board_id, view_url)."""
+    resp = client.put(
+        f"{_MIRO_API_BASE}/boards/{MIRO_TEMPLATE_BOARD_ID}/copy",
+        headers=headers,
+        json={},
+    )
+    if not resp.is_success:
+        logger.warning("Board copy failed %s: %s", resp.status_code, resp.text[:200])
+        return None, None
+    board = resp.json()
+    return board["id"], board["viewLink"]
+
+
+def _get_all_items(
+    client: httpx.Client,
+    headers: dict,
+    board_id: str,
+    item_type: str,
+) -> list[dict]:
+    """Fetch every item of a given type via cursor-based pagination."""
+    items: list[dict] = []
+    cursor: str | None = None
+    while True:
+        params: dict = {"type": item_type, "limit": 50}
+        if cursor:
+            params["cursor"] = cursor
+        resp = client.get(
+            f"{_MIRO_API_BASE}/boards/{board_id}/items",
+            headers=headers,
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        items.extend(data.get("data", []))
+        cursor = data.get("cursor")
+        if not cursor:
+            break
+    return items
+
+
+def _find_diamond_placeholders(
+    client: httpx.Client,
+    headers: dict,
+    board_id: str,
+) -> list[dict]:
+    """
+    Find all rhombus shapes on the board — these are the image placeholders.
+    Returns them sorted top-left → bottom-right (row-major, 100 px row tolerance).
+    """
+    shapes = _get_all_items(client, headers, board_id, "shape")
+    diamonds = [
+        s for s in shapes
+        if s.get("style", {}).get("shapeType") == "rhombus"
+    ]
+    logger.info("Found %d diamond placeholders", len(diamonds))
+
+    def _sort_key(d: dict) -> tuple[int, float]:
+        x = d["position"]["x"]
+        y = d["position"]["y"]
+        return (round(y / 100) * 100, x)   # group rows within 100 px, then left→right
+
+    return sorted(diamonds, key=_sort_key)
+
+
+def _populate_template_board(
+    client: httpx.Client,
+    headers: dict,
+    board_id: str,
+    brief: dict,
+) -> None:
+    """
+    Populate a copied template board:
+      1. Detect diamond placeholders → get their centre positions.
+      2. Fetch Pexels images (de-duplicated, brief-aware).
+      3. Place each image centred on its diamond using a two-step upload+PATCH
+         so both width AND height can be set (Miro's POST only accepts one dim).
+      4. Update sticky note text content from the brief.
+    """
+    diamonds = _find_diamond_placeholders(client, headers, board_id)
+
+    if not diamonds:
+        logger.warning("No diamond placeholders found — using fallback slot layout")
+        _add_vision_images(client, headers, board_id, brief)
+        _add_sticky_notes(client, headers, board_id, brief)
+        return
+
+    plan   = _llm_layout_plan(brief) or _fallback_plan(brief)
+    images = _fetch_unique_images(plan.get("groups", []), n=len(diamonds))
+    logger.info("Placing %d images on %d diamond slots", len(images), len(diamonds))
+
+    auth_token = headers["Authorization"]
+    placed = 0
+
+    for i, (img_url, orig_w, orig_h) in enumerate(images):
+        if i >= len(diamonds):
+            break
+        diamond   = diamonds[i]
+        cx        = diamond["position"]["x"]
+        cy        = diamond["position"]["y"]
+        target_w  = round(diamond.get("geometry", {}).get("width",  350))
+        target_h  = round(target_w * orig_h / orig_w)
+
+        logger.info(
+            "Slot %d: diamond @ (%.0f, %.0f) %dpx → %s",
+            i, cx, cy, target_w, img_url.split("/")[-1][:30],
+        )
+        ok = _place_image_at(client, board_id, auth_token, img_url, cx, cy, target_w, target_h)
+        if ok:
+            placed += 1
+
+    logger.info("Template images placed: %d / %d", placed, len(images))
+    _update_template_sticky_notes(client, headers, board_id, brief)
+
+
+def _place_image_at(
+    client: httpx.Client,
+    board_id: str,
+    auth_token: str,
+    img_url: str,
+    cx: float,
+    cy: float,
+    target_w: int,
+    target_h: int,
+) -> bool:
+    """
+    Two-step image placement that enforces exact width × height:
+
+    Step 1 — binary multipart POST with position only (no geometry).
+              Miro's POST accepts only one dimension; omitting both means Miro
+              stores the image at its natural size without cropping.
+
+    Step 2 — PATCH the created item with both width and height so the widget
+              is sized deterministically. The image fills the widget at the
+              correct aspect ratio (no cropping, no letterboxing).
+    """
+    try:
+        dl = httpx.get(img_url, timeout=25.0, follow_redirects=True)
+        dl.raise_for_status()
+    except Exception as exc:
+        logger.warning("Download failed for %s: %s", img_url[:60], exc)
+        return False
+
+    content_type = dl.headers.get("content-type", "image/jpeg").split(";")[0]
+
+    # Step 1: upload binary, set position only
+    data_payload = json.dumps({"position": {"x": cx, "y": cy}})
+    try:
+        r = client.post(
+            f"{_MIRO_API_BASE}/boards/{board_id}/images",
+            headers={"Authorization": auth_token, "Accept": "application/json"},
+            files={"resource": ("photo.jpg", dl.content, content_type)},
+            data={"data": data_payload},
+        )
+        if not r.is_success:
+            logger.warning("Image POST %s: %s", r.status_code, r.text[:150])
+            return False
+        item_id = r.json()["id"]
+    except Exception as exc:
+        logger.warning("Image POST exception: %s", exc)
+        return False
+
+    # Step 2: PATCH to enforce exact widget dimensions
+    patch_headers = {
+        "Authorization": auth_token,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    try:
+        p = client.patch(
+            f"{_MIRO_API_BASE}/boards/{board_id}/images/{item_id}",
+            headers=patch_headers,
+            json={"geometry": {"width": target_w, "height": target_h}},
+        )
+        if not p.is_success:
+            logger.warning("Image PATCH %s: %s", p.status_code, p.text[:150])
+            # Image was still placed (step 1 succeeded); treat as partial success
+    except Exception as exc:
+        logger.warning("Image PATCH exception: %s", exc)
+
+    return True
+
+
+def _update_template_sticky_notes(
+    client: httpx.Client,
+    headers: dict,
+    board_id: str,
+    brief: dict,
+) -> None:
+    """
+    Find sticky notes on the template copy and update their text content from
+    the brief. Matches by the first word of the note's existing content
+    (e.g. "STYLE", "BUDGET"). Position and colour are left unchanged.
+    """
+    budget_val = brief.get("budget")
+    currency   = brief.get("currency", "EUR")
+    budget_str = f"{currency} {int(budget_val):,}" if budget_val else "TBD"
+
+    content_map = {
+        "BUDGET":      budget_str,
+        "ROOMS":       _join(brief.get("rooms_priority")),
+        "MUST HAVES":  _join(brief.get("must_haves")),
+        "CONSTRAINTS": _join(brief.get("constraints")),
+        "STYLE":       _join(brief.get("style")),
+        "VIBE":        _join(brief.get("vibe_words")),
+        "AVOID":       _join(brief.get("avoid")),
+        "NOTES":       brief.get("notes") or "—",
+    }
+
+    sticky_notes = _get_all_items(client, headers, board_id, "sticky_note")
+    updated = 0
+    patch_headers = {**headers, "Content-Type": "application/json"}
+
+    for note in sticky_notes:
+        raw     = note.get("data", {}).get("content", "")
+        # Strip HTML tags that Miro may wrap content in
+        plain   = re.sub(r"<[^>]+>", "", raw).strip()
+        label   = plain.split("\n")[0].strip().upper()
+        if label not in content_map:
+            continue
+        new_content = f"{label}\n{content_map[label]}"
+        try:
+            p = client.patch(
+                f"{_MIRO_API_BASE}/boards/{board_id}/sticky_notes/{note['id']}",
+                headers=patch_headers,
+                json={"data": {"content": new_content}},
+            )
+            if p.is_success:
+                updated += 1
+            else:
+                logger.warning("Sticky PATCH %s: %s", p.status_code, p.text[:100])
+        except Exception as exc:
+            logger.warning("Sticky PATCH exception for %s: %s", label, exc)
+
+    logger.info("Sticky notes updated: %d / %d", updated, len(sticky_notes))
+
+
+# ---------------------------------------------------------------------------
+# Layout planning (Claude produces themed groups)
 # ---------------------------------------------------------------------------
 
 def _llm_layout_plan(brief: dict) -> dict | None:
     """
     Ask Claude Haiku for a semantic layout plan: 4-5 themed image groups
     with size hints (hero | medium | small) and Pexels queries.
-    Pixel placement is handled by _IMG_SLOTS; Claude only decides themes.
     """
     if not OPENROUTER_API_KEY:
         return None
@@ -225,16 +455,21 @@ def _fallback_plan(brief: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — Fetch unique images, hero-first, deduplicated
+# Fetch unique images from Pexels
 # ---------------------------------------------------------------------------
 
-def _fetch_unique_images(groups: list[dict]) -> list[str]:
+def _fetch_unique_images(
+    groups: list[dict],
+    n: int | None = None,
+) -> list[tuple[str, int, int]]:
     """
-    Fetch 2 images per query using the Pexels large2x URL (~1880 px wide,
-    proportional crop — good quality without the multi-MB original files).
-    Deduplicate by photo ID. Return URLs ordered hero → medium → small.
-    Capped at len(_IMG_SLOTS).
+    Fetch 2 images per query.  Returns (url, orig_w, orig_h) tuples.
+    URL uses only ?w=940 (no h= constraint) — proportional resize, no crop.
+    Deduped by photo ID. Ordered hero → medium → small.
+    Capped at n (defaults to len(_IMG_SLOTS)).
     """
+    cap = n if n is not None else len(_IMG_SLOTS)
+
     if not PEXELS_API_KEY:
         logger.warning("PEXELS_API_KEY not set — skipping vision images")
         return []
@@ -243,7 +478,7 @@ def _fetch_unique_images(groups: list[dict]) -> list[str]:
     sorted_groups = sorted(groups, key=lambda g: size_order.get(g.get("size", "medium"), 1))
 
     seen_ids: set[str] = set()
-    urls: list[str] = []
+    results: list[tuple[str, int, int]] = []
 
     for group in sorted_groups:
         for query in group.get("queries", []):
@@ -259,45 +494,22 @@ def _fetch_unique_images(groups: list[dict]) -> list[str]:
                     pid = str(photo["id"])
                     if pid not in seen_ids:
                         seen_ids.add(pid)
-                        # large: ~940 px wide, proportional resize (no forced crop).
-                        # large2x has h=650&w=940 which forces a 1.44:1 crop via Imgix.
-                        urls.append(photo["src"]["large"])
+                        url = (
+                            f"https://images.pexels.com/photos/{photo['id']}/"
+                            f"pexels-photo-{photo['id']}.jpeg"
+                            "?auto=compress&cs=tinysrgb&w=940"
+                        )
+                        results.append((url, photo["width"], photo["height"]))
             except Exception as exc:
                 logger.warning("Pexels fetch failed for '%s': %s", query, exc)
 
-    logger.info("Fetched %d unique images across %d groups", len(urls), len(sorted_groups))
-    return urls[: len(_IMG_SLOTS)]
+    logger.info("Fetched %d unique images across %d groups", len(results), len(sorted_groups))
+    return results[:cap]
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — Upload images to Miro via multipart (binary upload)
+# Fallback path — programmatic slot layout
 # ---------------------------------------------------------------------------
-
-def _jpeg_dims(data: bytes) -> tuple[int, int] | None:
-    """
-    Parse a JPEG stream to return (width, height) without an image library.
-    Walks SOF markers (0xC0–0xCF, excluding 0xC4/0xC8) to find frame dimensions.
-    Returns None if parsing fails.
-    """
-    i = 2  # skip SOI (FF D8)
-    while i + 3 < len(data):
-        if data[i] != 0xFF:
-            break
-        marker = data[i + 1]
-        # SOF markers that carry image dimensions
-        if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
-                      0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
-            if i + 8 < len(data):
-                h = (data[i + 5] << 8) | data[i + 6]
-                w = (data[i + 7] << 8) | data[i + 8]
-                if w > 0 and h > 0:
-                    return w, h
-        if i + 3 >= len(data):
-            break
-        seg_len = (data[i + 2] << 8) | data[i + 3]
-        i += 2 + seg_len
-    return None
-
 
 def _upload_image_binary(
     client: httpx.Client,
@@ -307,19 +519,10 @@ def _upload_image_binary(
     width: int,
     x: int,
     y: int,
+    orig_w: int,
+    orig_h: int,
 ) -> bool:
-    """
-    Download image bytes from Pexels then POST them directly to Miro as a
-    multipart/form-data upload.
-
-    Why not data.url?  When Miro fetches by URL its servers must reach the
-    Pexels CDN at upload time; timeouts or CDN blocks leave the widget in a
-    broken 'click to reload' state.  Uploading the bytes ourselves guarantees
-    the image is stored in Miro immediately and always renders.
-
-    Both width AND height are specified in geometry (computed from the image's
-    actual aspect ratio) so Miro never crops the image to fit a default frame.
-    """
+    """Binary multipart upload with height-only geometry (avoids square default)."""
     try:
         dl = httpx.get(img_url, timeout=25.0, follow_redirects=True)
         dl.raise_for_status()
@@ -328,27 +531,15 @@ def _upload_image_binary(
         return False
 
     content_type = dl.headers.get("content-type", "image/jpeg").split(";")[0]
-
-    # Miro's binary-upload API accepts only ONE of width or height.
-    # Prefer passing height (derived from the image's actual pixel dims) so that
-    # Miro infers width proportionally — avoids any "square default" when only
-    # width is given.  Fall back to width if JPEG parsing fails.
-    dims = _jpeg_dims(dl.content)
-    if dims:
-        img_w, img_h = dims
-        geom: dict = {"height": round(width * img_h / img_w)}
-    else:
-        geom = {"width": width}
-
+    target_height = round(width * orig_h / orig_w)
     data_payload = json.dumps({
         "position": {"x": x, "y": y},
-        "geometry": geom,
+        "geometry": {"height": target_height},
     })
 
     try:
         r = client.post(
             f"{_MIRO_API_BASE}/boards/{board_id}/images",
-            # No Content-Type header — httpx sets multipart boundary automatically
             headers={"Authorization": auth_token, "Accept": "application/json"},
             files={"resource": ("photo.jpg", dl.content, content_type)},
             data={"data": data_payload},
@@ -363,12 +554,6 @@ def _upload_image_binary(
 
 
 def _add_vision_images(client: httpx.Client, headers: dict, board_id: str, brief: dict) -> None:
-    """
-    1. Claude generates a themed layout plan (groups + size hints).
-    2. Fetch unique Pexels images (large2x, hero-first, deduplicated).
-    3. Download each and upload as binary to Miro — guarantees rendering.
-    4. Place into the pre-designed Pinterest-style slot template.
-    """
     plan   = _llm_layout_plan(brief) or _fallback_plan(brief)
     images = _fetch_unique_images(plan.get("groups", []))
 
@@ -379,32 +564,19 @@ def _add_vision_images(client: httpx.Client, headers: dict, board_id: str, brief
     auth_token = headers["Authorization"]
     placed = 0
 
-    for img_url in images:
+    for img_url, orig_w, orig_h in images:
         if placed >= len(_IMG_SLOTS):
             break
         x, y, width = _IMG_SLOTS[placed]
-        ok = _upload_image_binary(client, board_id, auth_token, img_url, width, x, y)
+        ok = _upload_image_binary(client, board_id, auth_token, img_url, width, x, y, orig_w, orig_h)
         if ok:
             placed += 1
-            logger.info(
-                "Image %2d → slot %2d  (%dpx at %d, %d)",
-                placed, placed - 1, width, x, y,
-            )
+            logger.info("Image %2d → slot %2d  (%dpx at %d, %d)", placed, placed - 1, width, x, y)
 
     logger.info("Vision images placed: %d / %d", placed, len(images))
 
 
-# ---------------------------------------------------------------------------
-# Sticky notes — two flanking columns, vertically aligned to image rows
-# ---------------------------------------------------------------------------
-
 def _add_sticky_notes(client: httpx.Client, headers: dict, board_id: str, brief: dict) -> None:
-    """
-    8 sticky notes in two columns flanking the image collage.
-    Left  (x ≈ −1110): STYLE, VIBE, AVOID, NOTES          (aesthetic)
-    Right (x ≈ +1020): BUDGET, ROOMS, MUST HAVES, CONSTRAINTS  (practical)
-    y values align with the four image rows — notes feel tied to the imagery.
-    """
     base_url = f"{_MIRO_API_BASE}/boards/{board_id}/sticky_notes"
 
     budget_val = brief.get("budget")

@@ -13,6 +13,9 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 FAL_KEY = os.getenv("FAL_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 MIRO_API_TOKEN = os.getenv("MIRO_API_TOKEN", "")
+MIRO_TEMPLATE_BOARD_ID = os.getenv("MIRO_TEMPLATE_BOARD_ID", "")
+MIRO_MCP_ENABLED = os.getenv("MIRO_MCP_ENABLED", "true").lower() == "true"
+MIRO_MCP_PACKAGE = os.getenv("MIRO_MCP_PACKAGE", "@evalstate/mcp-miro")
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "")
 
 # --- OpenRouter Models ---
