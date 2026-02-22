@@ -364,56 +364,26 @@ export default function ConsultationPage() {
         </button>
       </section>
 
-      {/* Right: Mood Board + Preferences */}
+      {/* Right: Preferences (primary) + Mood Board */}
       <section
         style={{
           display: "flex",
           flexDirection: "column",
-          padding: "1.5rem 2rem",
-          overflowY: "auto",
-          gap: "1.5rem",
           background: "var(--bg-elevated)",
           animation: "fadeIn 0.5s ease-out 0.2s both",
+          overflow: "hidden",
         }}
       >
-        <div
-          style={{ flex: miroBoardUrl ? 1 : undefined, minHeight: miroBoardUrl ? 0 : undefined }}
-        >
-          <div
-            style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-            <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>
-              {miroBoardUrl ? "Vision Board" : "Mood Board"}
-            </h2>
-          </div>
-          {miroBoardUrl ? (
-            <MiroEmbed boardUrl={miroBoardUrl} height="100%" />
-          ) : (
-            <MoodBoard items={moodItems} />
-          )}
-        </div>
-
+        {/* Collected Preferences — always visible at top */}
         <div
           style={{
-            borderTop: "1px solid var(--border)",
-            paddingTop: "1.5rem",
+            padding: "1.5rem 2rem 1rem",
+            borderBottom: "1px solid var(--border)",
+            flexShrink: 0,
           }}
         >
           <div
-            style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.875rem" }}
           >
             <svg
               width="16"
@@ -444,6 +414,7 @@ export default function ConsultationPage() {
                   borderRadius: "var(--radius-full)",
                   background: "rgba(139,92,246,0.1)",
                   color: "var(--accent)",
+                  animation: "fadeIn 0.2s ease-out",
                 }}
               >
                 {Object.keys(preferences).length}
@@ -451,6 +422,45 @@ export default function ConsultationPage() {
             )}
           </div>
           <PreferenceTags preferences={preferences} />
+        </div>
+
+        {/* Mood Board / Vision Board — fills remaining space */}
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            padding: "1rem 2rem 1.5rem",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.875rem" }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--accent)"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>
+              {miroBoardUrl ? "Vision Board" : "Mood Board"}
+            </h2>
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            {miroBoardUrl ? (
+              <MiroEmbed boardUrl={miroBoardUrl} height="100%" />
+            ) : (
+              <MoodBoard items={moodItems} />
+            )}
+          </div>
         </div>
       </section>
     </main>
