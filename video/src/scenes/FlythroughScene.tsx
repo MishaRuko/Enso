@@ -65,7 +65,7 @@ function CameraController({
 }
 
 function RoomModelStatic() {
-  const gltf = useGLTFDelayed("demo-room.glb");
+  const gltf = useGLTFDelayed("furnished-room.glb");
 
   const cloned = useMemo(() => {
     if (!gltf) return null;

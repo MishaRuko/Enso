@@ -4,7 +4,6 @@ import {
   useCurrentFrame,
   useVideoConfig,
   interpolate,
-  spring,
   Easing,
 } from "remotion";
 import { ThreeCanvas } from "@remotion/three";
@@ -16,69 +15,31 @@ import { loadFont as loadRighteous } from "@remotion/google-fonts/Righteous";
 
 const { fontFamily: displayFont } = loadRighteous();
 
-const FURNITURE = [
-  { name: "Sofa", pos: [1.5, 0.4, 2] as const, size: [2, 0.8, 0.9] as const, color: "#d4c8bc" },
-  { name: "Coffee Table", pos: [2.5, 0.25, 3] as const, size: [0.8, 0.5, 0.5] as const, color: "#8b7355" },
-  { name: "Bookshelf", pos: [4.5, 0.9, 0.3] as const, size: [1.2, 1.8, 0.4] as const, color: "#c4b5a0" },
-  { name: "Armchair", pos: [0.5, 0.35, 3.5] as const, size: [0.8, 0.7, 0.8] as const, color: "#a69279" },
-  { name: "Floor Lamp", pos: [0.3, 0.75, 1.5] as const, size: [0.3, 1.5, 0.3] as const, color: "#2e2e38" },
-];
-
 function SlowPanCamera({ frame, totalFrames }: { frame: number; totalFrames: number }) {
   const { camera } = useThree();
   const lookTarget = useRef(new Vector3());
 
   useEffect(() => {
     const progress = frame / totalFrames;
-    const px = lerp(6.5, 5.0, smoothstep(progress));
-    const py = lerp(5.5, 4.0, smoothstep(progress));
-    const pz = lerp(8.0, 6.5, smoothstep(progress));
+    const t = smoothstep(progress);
+    // Start from where FlythroughScene's camera ends, then smoothly pan out
+    const px = lerp(5.0, 5.0, t);
+    const py = lerp(4.5, 4.0, t);
+    const pz = lerp(5.5, 6.5, t);
     camera.position.set(px, py, pz);
-    lookTarget.current.set(2.5, 0.5, 2.5);
+    lookTarget.current.set(
+      lerp(2.0, 2.5, t),
+      lerp(0.3, 0.5, t),
+      lerp(2.0, 2.5, t),
+    );
     camera.lookAt(lookTarget.current);
   }, [frame, totalFrames, camera]);
 
   return null;
 }
 
-function FurnitureDrop({
-  item,
-  startFrame,
-  fps,
-}: {
-  item: (typeof FURNITURE)[0];
-  startFrame: number;
-  fps: number;
-}) {
-  const frame = useCurrentFrame();
-  const localFrame = frame - startFrame;
-  if (localFrame < 0) return null;
-
-  const scale = spring({
-    frame: localFrame,
-    fps,
-    config: { stiffness: 120, damping: 12, mass: 0.8 },
-  });
-  const dropY = interpolate(localFrame, [0, 10], [3, 0], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-
-  return (
-    <mesh
-      position={[item.pos[0], item.pos[1] + dropY, item.pos[2]]}
-      scale={[scale, scale, scale]}
-      castShadow
-      receiveShadow
-    >
-      <boxGeometry args={[...item.size]} />
-      <meshStandardMaterial color={item.color} roughness={0.85} metalness={0.05} />
-    </mesh>
-  );
-}
-
-function RoomModelStatic() {
-  const gltf = useGLTFDelayed("demo-room.glb");
+function FurnishedRoomModel() {
+  const gltf = useGLTFDelayed("furnished-room.glb");
 
   const cloned = useMemo(() => {
     if (!gltf) return null;
@@ -117,18 +78,15 @@ export const FurnitureScene: React.FC = () => {
       <ThreeCanvas
         width={width}
         height={height}
-        camera={{ position: [6.5, 5.5, 8], fov: 45 }}
+        camera={{ position: [5.0, 4.5, 5.5], fov: 45 }}
       >
         <color attach="background" args={["#f5f0eb"]} />
         <ambientLight intensity={0.4} color="#f5f0eb" />
         <directionalLight position={[5, 10, 4]} intensity={1.2} castShadow />
         <directionalLight position={[-3, 6, -2]} intensity={0.3} color="#93c5fd" />
         <hemisphereLight intensity={0.3} color="#fef3c7" groundColor="#1e1b4b" />
-        <RoomModelStatic />
+        <FurnishedRoomModel />
         <SlowPanCamera frame={frame} totalFrames={durationInFrames} />
-        {FURNITURE.map((item, i) => (
-          <FurnitureDrop key={item.name} item={item} startFrame={10 + i * 15} fps={fps} />
-        ))}
       </ThreeCanvas>
 
       <div
