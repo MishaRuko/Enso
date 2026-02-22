@@ -30,6 +30,7 @@ dependencies = [
     "boto3>=1.34.0",
     "gurobipy>=11.0.0",
     "tenacity>=8.2.0",
+    "opencv-python-headless>=4.10.0",
 ]
 
 [tool.ruff]

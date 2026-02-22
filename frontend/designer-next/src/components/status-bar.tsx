@@ -14,6 +14,8 @@ const PHASES = [
 
 interface StatusBarProps {
   currentPhase: string;
+  onPhaseClick?: (phaseIndex: number) => void;
+  viewPhase?: number | null;
 }
 
 function phaseIndex(status: string): number {
@@ -47,7 +49,7 @@ function isProcessing(status: string): boolean {
   );
 }
 
-export function StatusBar({ currentPhase }: StatusBarProps) {
+export function StatusBar({ currentPhase, onPhaseClick, viewPhase }: StatusBarProps) {
   const activeIdx = phaseIndex(currentPhase);
   const failed = isFailed(currentPhase);
   const processing = isProcessing(currentPhase);
@@ -123,6 +125,8 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
           const isDone = i < activeIdx;
           const isError = isActive && failed;
           const isInProgress = isActive && processing;
+          const isClickable = onPhaseClick && (isDone || (isActive && !isInProgress));
+          const isViewing = viewPhase === i;
 
           return (
             <div key={phase.key} style={{ display: "flex", alignItems: "center" }}>
@@ -138,6 +142,7 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
                 />
               )}
               <div
+                onClick={isClickable ? () => onPhaseClick(i) : undefined}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -148,28 +153,35 @@ export function StatusBar({ currentPhase }: StatusBarProps) {
                   fontWeight: 500,
                   letterSpacing: "0.02em",
                   transition: "all var(--transition-base)",
-                  background: isError
-                    ? "var(--error-subtle)"
-                    : isActive
-                      ? "#1a1a38"
-                      : isDone
-                        ? "rgba(124,140,110,0.1)"
-                        : "transparent",
-                  color: isError
-                    ? "var(--error)"
-                    : isActive
-                      ? "#faf9f7"
-                      : isDone
-                        ? "var(--sage)"
-                        : "var(--text-3)",
-                  border: `1px solid ${
-                    isError
-                      ? "var(--error)"
+                  cursor: isClickable ? "pointer" : "default",
+                  background: isViewing
+                    ? "var(--accent)"
+                    : isError
+                      ? "var(--error-subtle)"
                       : isActive
                         ? "#1a1a38"
                         : isDone
-                          ? "rgba(124,140,110,0.2)"
-                          : "var(--border)"
+                          ? "rgba(124,140,110,0.1)"
+                          : "transparent",
+                  color: isViewing
+                    ? "#fff"
+                    : isError
+                      ? "var(--error)"
+                      : isActive
+                        ? "#faf9f7"
+                        : isDone
+                          ? "var(--sage)"
+                          : "var(--text-3)",
+                  border: `1px solid ${
+                    isViewing
+                      ? "var(--accent)"
+                      : isError
+                        ? "var(--error)"
+                        : isActive
+                          ? "#1a1a38"
+                          : isDone
+                            ? "rgba(124,140,110,0.2)"
+                            : "var(--border)"
                   }`,
                   animation: isInProgress ? "pulseGlow 2s ease-in-out infinite" : "none",
                 }}

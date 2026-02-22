@@ -1,23 +1,10 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import { Suspense, useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Float } from "@react-three/drei";
 import type * as THREE from "three";
 import { Box3, Vector3 } from "three";
-
-class SceneErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}
 
 /* ── Preload the demo room GLB so it's cached before the Canvas mounts ── */
 const DEMO_ROOM_URL = "/demo-room.glb";
@@ -84,7 +71,9 @@ function Scene({ scrollRef }: { scrollRef: React.MutableRefObject<number> }) {
       <directionalLight position={[-4, 6, -3]} intensity={0.35} color="#93c5fd" />
       <hemisphereLight intensity={0.35} color="#fef3c7" groundColor="#2e2e38" />
 
-      <RoomModel scrollRef={scrollRef} />
+      <Suspense fallback={null}>
+        <RoomModel scrollRef={scrollRef} />
+      </Suspense>
     </>
   );
 }
@@ -106,17 +95,15 @@ export function HeroScene({ scrollProgress }: HeroSceneProps) {
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>
-      <SceneErrorBoundary>
-        <Canvas
-          shadows
-          camera={{ position: [1.8, 2.5, 5.5], fov: 40 }}
-          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-          style={{ width: "100%", height: "100%" }}
-          dpr={[1, 1.5]}
-        >
-          <Scene scrollRef={scrollRef} />
-        </Canvas>
-      </SceneErrorBoundary>
+      <Canvas
+        shadows
+        camera={{ position: [1.8, 2.5, 5.5], fov: 40 }}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        style={{ width: "100%", height: "100%" }}
+        dpr={[1, 1.5]}
+      >
+        <Scene scrollRef={scrollRef} />
+      </Canvas>
     </div>
   );
 }

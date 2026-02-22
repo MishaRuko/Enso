@@ -114,6 +114,7 @@ export interface DesignSession {
   payment_link: string | null;
   payment_status: string;
   miro_board_url: string | null;
+  demo_selected: boolean;
 }
 
 // --- Pipeline ---

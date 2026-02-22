@@ -96,6 +96,18 @@ def list_sessions() -> list[dict]:
     return get_client().table("design_sessions").select("*").order("created_at", desc=True).execute().data
 
 
+def list_demo_sessions() -> list[dict]:
+    return (
+        get_client()
+        .table("design_sessions")
+        .select("*")
+        .eq("demo_selected", True)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+
 def update_session(session_id: str, updates: dict) -> dict:
     updates["updated_at"] = datetime.now(UTC).isoformat()
     return get_client().table("design_sessions").update(updates).eq("id", session_id).execute().data[0]

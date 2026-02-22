@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createSession } from "@/lib/backend";
 import { EnsoLogo } from "@/components/enso-logo";
 import { HeroScene } from "@/components/hero-scene";
@@ -269,9 +269,7 @@ export default function HomePage() {
         }}
       >
         {/* 3D scene behind everything */}
-        <Suspense fallback={null}>
-          <HeroScene scrollProgress={scrollProgress} />
-        </Suspense>
+        <HeroScene scrollProgress={scrollProgress} />
 
         {/* Subtle gradient overlay for depth */}
         <div
@@ -393,20 +391,41 @@ export default function HomePage() {
               {loading === "design" ? "Creating..." : "Upload Floorplan"}
             </button>
           </div>
-          <a
-            href="/deck"
+          <div
             style={{
               marginTop: "1.25rem",
-              fontSize: "0.75rem",
-              color: "rgba(26,26,56,0.5)",
-              textDecoration: "underline",
-              textUnderlineOffset: "3px",
-              letterSpacing: "0.04em",
+              display: "flex",
+              alignItems: "center",
+              gap: "1rem",
               animation: "fadeUp 1s cubic-bezier(0.4, 0, 0.2, 1) 0.9s both",
             }}
           >
-            deck
-          </a>
+            <a
+              href="/deck"
+              style={{
+                fontSize: "0.75rem",
+                color: "rgba(26,26,56,0.5)",
+                textDecoration: "underline",
+                textUnderlineOffset: "3px",
+                letterSpacing: "0.04em",
+              }}
+            >
+              deck
+            </a>
+            <span style={{ color: "rgba(26,26,56,0.2)", fontSize: "0.75rem" }}>|</span>
+            <a
+              href="/tracing/demo"
+              style={{
+                fontSize: "0.75rem",
+                color: "rgba(26,26,56,0.5)",
+                textDecoration: "underline",
+                textUnderlineOffset: "3px",
+                letterSpacing: "0.04em",
+              }}
+            >
+              demo
+            </a>
+          </div>
         </div>
 
         {/* Scroll indicator — bottom-left */}

@@ -137,6 +137,21 @@ async def list_sessions():
     return db.list_sessions()
 
 
+@app.get("/api/demo-sessions")
+async def list_demo_sessions():
+    return db.list_demo_sessions()
+
+
+@app.patch("/api/sessions/{session_id}/demo")
+async def toggle_demo(session_id: str):
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    new_val = not session.get("demo_selected", False)
+    db.update_session(session_id, {"demo_selected": new_val})
+    return {"demo_selected": new_val}
+
+
 @app.get("/api/sessions/{session_id}")
 async def get_session(session_id: str):
     session = db.get_session(session_id)
@@ -349,13 +364,14 @@ async def get_grid(session_id: str):
 
 
 @app.post("/api/sessions/{session_id}/pipeline")
-async def start_pipeline(session_id: str):
+async def start_pipeline(session_id: str, mode: str = "fast"):
+    """Start design pipeline. mode='fast' (Gemini) or 'pro' (Gurobi optimizer)."""
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     async def _run_pipeline():
         try:
-            await run_full_pipeline(session_id)
+            await run_full_pipeline(session_id, mode=mode)
         except Exception:
             logging.getLogger("pipeline_task").exception("Pipeline task failed for %s", session_id)
             sess = db.get_session(session_id)
@@ -366,7 +382,7 @@ async def start_pipeline(session_id: str):
     task = asyncio.create_task(_run_pipeline())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
-    return {"status": "started"}
+    return {"status": "started", "mode": mode}
 
 
 @app.post("/api/sessions/{session_id}/source-models")
@@ -429,6 +445,23 @@ def cleanup_cancel_event(session_id: str) -> None:
 def is_cancelled(session_id: str) -> bool:
     event = _cancel_events.get(session_id)
     return event.is_set() if event else False
+
+
+class SelectFurnitureRequest(BaseModel):
+    item_ids: list[str]
+
+
+@app.post("/api/sessions/{session_id}/select-furniture")
+async def select_furniture(session_id: str, body: SelectFurnitureRequest):
+    """Mark furniture items as selected for checkout."""
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    all_items = db.list_furniture(session_id)
+    selected_set = set(body.item_ids)
+    for item in all_items:
+        db.update_furniture(item["id"], {"selected": item["id"] in selected_set})
+    return {"selected": len(selected_set), "total": len(all_items)}
 
 
 @app.post("/api/sessions/{session_id}/checkout")

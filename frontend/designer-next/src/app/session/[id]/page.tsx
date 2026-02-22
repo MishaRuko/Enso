@@ -8,8 +8,19 @@ import { FurnitureSidebar } from "@/components/furniture-sidebar";
 import { FloorplanUpload } from "@/components/floorplan-upload";
 import { StatusBar } from "@/components/status-bar";
 import { EnsoSpinner } from "@/components/enso-logo";
-import { createSession, runPipeline, listSessionJobs, savePlacements } from "@/lib/backend";
-import type { DesignJob, FurniturePlacement, TraceEvent } from "@/lib/types";
+import {
+  createSession,
+  runPipeline,
+  listSessionJobs,
+  savePlacements,
+} from "@/lib/backend";
+import type {
+  DesignJob,
+  DesignSession,
+  FurniturePlacement,
+  RoomData,
+  TraceEvent,
+} from "@/lib/types";
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -25,8 +36,14 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     }
   }, [error, router]);
   const [pipelineStarting, setPipelineStarting] = useState(false);
+  const [pipelineMode, setPipelineMode] = useState<"fast" | "pro">("fast");
   const [localPlacements, setLocalPlacements] = useState<FurniturePlacement[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const [viewPhase, setViewPhase] = useState<number | null>(null);
+
+  function handlePhaseClick(idx: number) {
+    setViewPhase((prev) => (prev === idx ? null : idx));
+  }
 
   // Sync local placements when session placements change (e.g. pipeline completes)
   const serverPlacements = session?.placements?.placements;
@@ -175,7 +192,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   async function handleRunPipeline() {
     setPipelineStarting(true);
     try {
-      await runPipeline(id);
+      await runPipeline(id, pipelineMode);
       refetch();
     } catch (err) {
       console.error("Pipeline start failed:", err);
@@ -188,13 +205,13 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     await handleRunPipeline();
   }
 
-  function handleApprove(selectedIds: string[]) {
-    console.log("Approved furniture:", selectedIds);
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <StatusBar currentPhase={currentStatus} />
+      <StatusBar
+        currentPhase={currentStatus}
+        onPhaseClick={handlePhaseClick}
+        viewPhase={viewPhase}
+      />
 
       {session.miro_board_url && (
         <div
@@ -256,205 +273,318 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* Main content area */}
         <div style={{ flex: 1, position: "relative" }}>
-          {/* pending -- show floorplan upload */}
-          {currentStatus === "pending" && (
-            <div style={{ animation: "fadeUp 0.6s ease-out" }}>
-              <FloorplanUpload sessionId={id} onUploaded={refetch} />
-            </div>
-          )}
-
-          {/* consulting -- preferences saved, show upload */}
-          {currentStatus === "consulting" && (
+          {/* "Back to live" chip when viewing a past phase */}
+          {viewPhase !== null && (
             <div
               style={{
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
-                animation: "fadeUp 0.6s ease-out",
+                position: "absolute",
+                top: "1rem",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 20,
+                animation: "fadeUp 0.3s ease-out",
               }}
             >
-              <FloorplanUpload sessionId={id} onUploaded={refetch} />
-            </div>
-          )}
-
-          {/* analyzing_floorplan -- live progress */}
-          {currentStatus === "analyzing_floorplan" && (
-            <CenterMessage>
-              <PipelineProgress sessionId={id} phase="Analyzing floorplan" />
-            </CenterMessage>
-          )}
-
-          {/* floorplan_ready -- show 3D room preview + run pipeline button */}
-          {canRunPipeline && currentStatus === "floorplan_ready" && (
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                position: "relative",
-                animation: "fadeUp 0.6s ease-out",
-              }}
-            >
-              <RoomViewer
-                roomData={roomData}
-                roomGlbUrl={session.room_glb_url}
-                allRooms={rooms}
-                placements={undefined}
-                furnitureItems={undefined}
-                floorplanUrl={session.floorplan_url}
-              />
-              <div
+              <button
+                type="button"
+                onClick={() => setViewPhase(null)}
                 style={{
-                  position: "absolute",
-                  bottom: "5rem",
-                  left: 0,
-                  right: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  zIndex: 10,
-                  animation: "fadeUp 0.6s ease-out 0.3s both",
-                }}
-              >
-                <p
-                  style={{
-                    fontSize: "0.875rem",
-                    color: "var(--text-2)",
-                    background: "rgba(250,249,247,0.9)",
-                    backdropFilter: "blur(12px)",
-                    padding: "0.375rem 1rem",
-                    borderRadius: "var(--radius-full)",
-                    border: "1px solid rgba(236,230,219,0.5)",
-                  }}
-                >
-                  {roomData
-                    ? `${roomData.name} — ${roomData.width_m}m \u00D7 ${roomData.length_m}m`
-                    : "Room preview"}
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleRunPipeline}
-                  disabled={pipelineStarting}
-                  style={{
-                    fontSize: "1rem",
-                    boxShadow: "0 6px 32px rgba(219,80,74,0.3)",
-                  }}
-                >
-                  {pipelineStarting ? "Starting..." : "Begin Design"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* processing states -- live progress */}
-          {isProcessing && currentStatus !== "analyzing_floorplan" && (
-            <CenterMessage>
-              <PipelineProgress
-                sessionId={id}
-                phase={
-                  currentStatus === "searching"
-                    ? "Curating furniture"
-                    : currentStatus === "sourcing"
-                      ? "Sourcing 3D models"
-                      : "Computing placement"
-                }
-              />
-            </CenterMessage>
-          )}
-
-          {/* failed states -- show error with retry */}
-          {isFailed && (
-            <CenterMessage>
-              <div
-                style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "50%",
-                  background: "var(--error-subtle)",
+                  background: "rgba(250,249,247,0.95)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid var(--border-hover)",
+                  borderRadius: "var(--radius-full)",
+                  padding: "0.375rem 1rem",
+                  fontSize: "0.8125rem",
+                  color: "var(--text)",
+                  cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: "1.25rem",
-                  animation: "fadeInScale 0.3s ease-out",
+                  gap: "0.375rem",
+                  boxShadow: "var(--shadow-md)",
                 }}
               >
                 <svg
-                  width="28"
-                  height="28"
+                  width="12"
+                  height="12"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="var(--error)"
+                  stroke="currentColor"
                   strokeWidth="2"
                 >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <polyline points="15 18 9 12 15 6" />
                 </svg>
-              </div>
-              <p
-                style={{
-                  fontSize: "1.25rem",
-                  fontWeight: 600,
-                  color: "var(--error)",
-                  marginBottom: "0.375rem",
-                }}
-              >
-                {currentStatus.replace(/_/g, " ").replace("failed", "Failed")}
-              </p>
-              <p style={{ color: "var(--muted)", marginBottom: "2rem", fontSize: "0.9375rem" }}>
-                Something went wrong. You can try again.
-              </p>
-              <button type="button" className="btn-primary" onClick={handleRetry}>
-                Try Again
+                Back to live view
               </button>
-            </CenterMessage>
-          )}
-
-          {/* complete -- show 3D viewer */}
-          {isComplete && (
-            <div style={{ width: "100%", height: "100%", animation: "fadeUp 0.6s ease-out" }}>
-              <RoomViewer
-                roomData={roomData}
-                roomGlbUrl={session.room_glb_url}
-                allRooms={rooms}
-                placements={localPlacements ?? placements}
-                furnitureItems={session.furniture_list}
-                floorplanUrl={session.floorplan_url}
-                onPlacementChange={setLocalPlacements}
-              />
-              {hasUnsavedChanges && (
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={handleSaveLayout}
-                  disabled={saving}
-                  style={{
-                    position: "absolute",
-                    top: "1rem",
-                    right: "1rem",
-                    zIndex: 10,
-                    fontSize: "0.875rem",
-                    padding: "0.5rem 1.25rem",
-                    boxShadow: "0 4px 20px rgba(219,80,74,0.25)",
-                    animation: "fadeUp 0.3s ease-out",
-                  }}
-                >
-                  {saving ? "Saving..." : "Save Layout"}
-                </button>
-              )}
             </div>
           )}
 
-          {/* furniture_found */}
-          {currentStatus === "furniture_found" && (
-            <CenterMessage>
-              <PipelineProgress sessionId={id} phase="Pieces selected" />
-            </CenterMessage>
+          {/* Phase-specific view when a StatusBar phase is clicked */}
+          {viewPhase !== null ? (
+            <PhaseView
+              phase={viewPhase}
+              session={session}
+              roomData={roomData}
+              rooms={rooms}
+              localPlacements={localPlacements}
+              placements={placements}
+              setLocalPlacements={setLocalPlacements}
+            />
+          ) : (
+            <>
+              {/* pending -- show floorplan upload */}
+              {currentStatus === "pending" && (
+                <div style={{ animation: "fadeUp 0.6s ease-out" }}>
+                  <FloorplanUpload sessionId={id} onUploaded={refetch} />
+                </div>
+              )}
+
+              {/* consulting -- preferences saved, show upload */}
+              {currentStatus === "consulting" && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    height: "100%",
+                    animation: "fadeUp 0.6s ease-out",
+                  }}
+                >
+                  <FloorplanUpload sessionId={id} onUploaded={refetch} />
+                </div>
+              )}
+
+              {/* analyzing_floorplan -- live progress */}
+              {currentStatus === "analyzing_floorplan" && (
+                <CenterMessage>
+                  <PipelineProgress sessionId={id} phase="Analyzing floorplan" />
+                </CenterMessage>
+              )}
+
+              {/* floorplan_ready -- show 3D room preview + run pipeline button */}
+              {canRunPipeline && currentStatus === "floorplan_ready" && (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    position: "relative",
+                    animation: "fadeUp 0.6s ease-out",
+                  }}
+                >
+                  <RoomViewer
+                    roomData={roomData}
+                    roomGlbUrl={session.room_glb_url}
+                    allRooms={rooms}
+                    placements={undefined}
+                    furnitureItems={undefined}
+                    floorplanUrl={session.floorplan_url}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "5rem",
+                      left: 0,
+                      right: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      zIndex: 10,
+                      animation: "fadeUp 0.6s ease-out 0.3s both",
+                    }}
+                  >
+                    <p
+                      style={{
+                        fontSize: "0.875rem",
+                        color: "var(--text-2)",
+                        background: "rgba(250,249,247,0.9)",
+                        backdropFilter: "blur(12px)",
+                        padding: "0.375rem 1rem",
+                        borderRadius: "var(--radius-full)",
+                        border: "1px solid rgba(236,230,219,0.5)",
+                      }}
+                    >
+                      {roomData
+                        ? `${roomData.name} — ${roomData.width_m}m \u00D7 ${roomData.length_m}m`
+                        : "Room preview"}
+                    </p>
+                    {/* Fast / Pro mode toggle */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        background: "rgba(250,249,247,0.9)",
+                        backdropFilter: "blur(12px)",
+                        padding: "3px",
+                        borderRadius: "var(--radius-full)",
+                        border: "1px solid rgba(236,230,219,0.5)",
+                      }}
+                    >
+                      {(["fast", "pro"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setPipelineMode(mode)}
+                          style={{
+                            padding: "0.375rem 1rem",
+                            borderRadius: "var(--radius-full)",
+                            border: "none",
+                            fontSize: "0.8125rem",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
+                            background:
+                              pipelineMode === mode
+                                ? mode === "pro"
+                                  ? "#1a1a38"
+                                  : "var(--accent)"
+                                : "transparent",
+                            color: pipelineMode === mode ? "#fff" : "var(--text-3)",
+                          }}
+                        >
+                          {mode === "fast" ? "Fast" : "Pro"}
+                        </button>
+                      ))}
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--muted)",
+                        maxWidth: 260,
+                        textAlign: "center",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {pipelineMode === "fast"
+                        ? "Gemini spatial reasoning — quick results"
+                        : "Gurobi integer programming — optimized placement"}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={handleRunPipeline}
+                      disabled={pipelineStarting}
+                      style={{
+                        fontSize: "1rem",
+                        boxShadow: "0 6px 32px rgba(219,80,74,0.3)",
+                      }}
+                    >
+                      {pipelineStarting ? "Starting..." : "Begin Design"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* processing states -- live progress */}
+              {isProcessing && currentStatus !== "analyzing_floorplan" && (
+                <CenterMessage>
+                  <PipelineProgress
+                    sessionId={id}
+                    phase={
+                      currentStatus === "searching"
+                        ? "Curating furniture"
+                        : currentStatus === "sourcing"
+                          ? "Sourcing 3D models"
+                          : "Computing placement"
+                    }
+                  />
+                </CenterMessage>
+              )}
+
+              {/* failed states -- show error with retry */}
+              {isFailed && (
+                <CenterMessage>
+                  <div
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "50%",
+                      background: "var(--error-subtle)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginBottom: "1.25rem",
+                      animation: "fadeInScale 0.3s ease-out",
+                    }}
+                  >
+                    <svg
+                      width="28"
+                      height="28"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="var(--error)"
+                      strokeWidth="2"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "1.25rem",
+                      fontWeight: 600,
+                      color: "var(--error)",
+                      marginBottom: "0.375rem",
+                    }}
+                  >
+                    {currentStatus.replace(/_/g, " ").replace("failed", "Failed")}
+                  </p>
+                  <p style={{ color: "var(--muted)", marginBottom: "2rem", fontSize: "0.9375rem" }}>
+                    Something went wrong. You can try again.
+                  </p>
+                  <button type="button" className="btn-primary" onClick={handleRetry}>
+                    Try Again
+                  </button>
+                </CenterMessage>
+              )}
+
+              {/* complete -- show 3D viewer */}
+              {isComplete && (
+                <div style={{ width: "100%", height: "100%", animation: "fadeUp 0.6s ease-out" }}>
+                  <RoomViewer
+                    roomData={roomData}
+                    roomGlbUrl={session.room_glb_url}
+                    allRooms={rooms}
+                    placements={localPlacements ?? placements}
+                    furnitureItems={session.furniture_list}
+                    floorplanUrl={session.floorplan_url}
+                    onPlacementChange={setLocalPlacements}
+                  />
+                  {hasUnsavedChanges && (
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={handleSaveLayout}
+                      disabled={saving}
+                      style={{
+                        position: "absolute",
+                        top: "1rem",
+                        right: "1rem",
+                        zIndex: 10,
+                        fontSize: "0.875rem",
+                        padding: "0.5rem 1.25rem",
+                        boxShadow: "0 4px 20px rgba(219,80,74,0.25)",
+                        animation: "fadeUp 0.3s ease-out",
+                      }}
+                    >
+                      {saving ? "Saving..." : "Save Layout"}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* furniture_found */}
+              {currentStatus === "furniture_found" && (
+                <CenterMessage>
+                  <PipelineProgress sessionId={id} phase="Pieces selected" />
+                </CenterMessage>
+              )}
+            </>
           )}
         </div>
 
-        {/* Sidebar -- show when complete with furniture */}
-        {isComplete && hasFurniture && (
+        {/* Sidebar -- show when complete with furniture, or when viewing furniture/placement phases */}
+        {((isComplete && hasFurniture) ||
+          (viewPhase !== null && viewPhase >= 2 && hasFurniture)) && (
           <div
             style={{
               width: "340px",
@@ -465,13 +595,210 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
             <FurnitureSidebar
               sessionId={id}
               items={session.furniture_list}
-              onApprove={handleApprove}
             />
           </div>
         )}
       </div>
     </div>
   );
+}
+
+function PhaseView({
+  phase,
+  session,
+  roomData,
+  rooms,
+  localPlacements,
+  placements,
+  setLocalPlacements,
+}: {
+  phase: number;
+  session: DesignSession;
+  roomData: RoomData | undefined;
+  rooms: RoomData[] | undefined;
+  localPlacements: FurniturePlacement[] | null;
+  placements: FurniturePlacement[] | undefined;
+  setLocalPlacements: (p: FurniturePlacement[]) => void;
+}) {
+  if (phase === 0) {
+    return (
+      <CenterMessage>
+        {session.floorplan_url ? (
+          <div style={{ animation: "fadeUp 0.4s ease-out" }}>
+            <img
+              src={session.floorplan_url}
+              alt="Uploaded floorplan"
+              style={{
+                maxWidth: "80%",
+                maxHeight: "70vh",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border)",
+                boxShadow: "var(--shadow-md)",
+              }}
+            />
+            <p style={{ color: "var(--muted)", marginTop: "1rem", fontSize: "0.875rem" }}>
+              Uploaded floorplan
+            </p>
+          </div>
+        ) : (
+          <p style={{ color: "var(--muted)" }}>No floorplan uploaded yet</p>
+        )}
+      </CenterMessage>
+    );
+  }
+
+  if (phase === 1) {
+    if (!session.room_glb_url && !roomData) {
+      return (
+        <CenterMessage>
+          <p style={{ color: "var(--muted)" }}>Room analysis not available yet</p>
+        </CenterMessage>
+      );
+    }
+    return (
+      <div style={{ width: "100%", height: "100%", animation: "fadeUp 0.4s ease-out" }}>
+        <RoomViewer
+          roomData={roomData}
+          roomGlbUrl={session.room_glb_url}
+          allRooms={rooms}
+          placements={undefined}
+          furnitureItems={undefined}
+          floorplanUrl={session.floorplan_url}
+        />
+        {roomData && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "2rem",
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "rgba(250,249,247,0.9)",
+              backdropFilter: "blur(12px)",
+              padding: "0.375rem 1rem",
+              borderRadius: "var(--radius-full)",
+              border: "1px solid rgba(236,230,219,0.5)",
+              fontSize: "0.875rem",
+              color: "var(--text-2)",
+              zIndex: 10,
+            }}
+          >
+            {roomData.name} — {roomData.width_m}m × {roomData.length_m}m
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === 2 || phase === 3) {
+    const items = session.furniture_list;
+    if (!items || items.length === 0) {
+      return (
+        <CenterMessage>
+          <p style={{ color: "var(--muted)" }}>No furniture found yet</p>
+        </CenterMessage>
+      );
+    }
+    return (
+      <div
+        style={{
+          padding: "2rem",
+          overflowY: "auto",
+          height: "100%",
+          animation: "fadeUp 0.4s ease-out",
+        }}
+      >
+        <h3
+          style={{
+            fontFamily: "var(--font-display), sans-serif",
+            fontWeight: 400,
+            fontSize: "1.125rem",
+            marginBottom: "1rem",
+            color: "var(--text)",
+          }}
+        >
+          {phase === 2 ? "Curated Furniture" : "Sourced 3D Models"} ({items.length} items)
+        </h3>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+            gap: "1rem",
+          }}
+        >
+          {items.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                overflow: "hidden",
+              }}
+            >
+              {item.image_url && (
+                <img
+                  src={item.image_url}
+                  alt={item.name}
+                  style={{ width: "100%", height: 140, objectFit: "cover" }}
+                />
+              )}
+              <div style={{ padding: "0.75rem" }}>
+                <p
+                  style={{
+                    fontSize: "0.8125rem",
+                    fontWeight: 600,
+                    marginBottom: "0.25rem",
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {item.name}
+                </p>
+                <div
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
+                >
+                  <span style={{ fontSize: "0.8125rem", color: "var(--accent)", fontWeight: 600 }}>
+                    {item.currency === "EUR" ? "€" : item.currency}
+                    {item.price}
+                  </span>
+                  {phase === 3 && (
+                    <span
+                      style={{
+                        fontSize: "0.6875rem",
+                        padding: "2px 6px",
+                        borderRadius: "var(--radius-full)",
+                        background: item.glb_url ? "var(--sage-glow)" : "var(--error-subtle)",
+                        color: item.glb_url ? "var(--sage)" : "var(--error)",
+                      }}
+                    >
+                      {item.glb_url ? "3D ready" : "No 3D"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 4 || phase === 5) {
+    return (
+      <div style={{ width: "100%", height: "100%", animation: "fadeUp 0.4s ease-out" }}>
+        <RoomViewer
+          roomData={roomData}
+          roomGlbUrl={session.room_glb_url}
+          allRooms={rooms}
+          placements={localPlacements ?? placements}
+          furnitureItems={session.furniture_list}
+          floorplanUrl={session.floorplan_url}
+          onPlacementChange={setLocalPlacements}
+        />
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function CenterMessage({ children }: { children: React.ReactNode }) {

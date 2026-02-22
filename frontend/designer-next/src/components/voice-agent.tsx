@@ -69,10 +69,19 @@ export default function VoiceAgent({
           },
           update_preference: (params: { key: string; value: unknown }) => {
             // Accumulate into ref (array fields append, scalar fields overwrite)
-            const arrayFields = ["colors", "lifestyle", "must_haves", "dealbreakers", "existing_furniture"];
+            const arrayFields = [
+              "colors",
+              "lifestyle",
+              "must_haves",
+              "dealbreakers",
+              "existing_furniture",
+            ];
             if (arrayFields.includes(params.key) && typeof params.value === "string") {
               const current = (preferencesRef.current[params.key] as string[] | undefined) ?? [];
-              preferencesRef.current = { ...preferencesRef.current, [params.key]: [...current, params.value] };
+              preferencesRef.current = {
+                ...preferencesRef.current,
+                [params.key]: [...current, params.value],
+              };
             } else {
               preferencesRef.current = { ...preferencesRef.current, [params.key]: params.value };
             }
@@ -300,9 +309,7 @@ export default function VoiceAgent({
           borderRadius: "var(--radius-md)",
           fontSize: "1rem",
           fontWeight: 600,
-          background: isConnected
-            ? "var(--error)"
-            : "linear-gradient(135deg, var(--accent), var(--gradient-mid))",
+          background: isConnected ? "var(--error)" : "var(--accent)",
           color: "#fff",
           transition: "all var(--transition-base)",
           boxShadow: isConnected ? "none" : "var(--shadow-glow)",

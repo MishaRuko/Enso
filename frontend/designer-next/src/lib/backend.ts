@@ -28,6 +28,17 @@ export async function listSessions(): Promise<DesignSession[]> {
   return Array.isArray(data) ? data : data.sessions;
 }
 
+export async function listDemoSessions(): Promise<DesignSession[]> {
+  const data = await apiFetch<DesignSession[] | { sessions: DesignSession[] }>(
+    "/api/demo-sessions",
+  );
+  return Array.isArray(data) ? data : data.sessions;
+}
+
+export function toggleDemo(sessionId: string): Promise<{ demo_selected: boolean }> {
+  return apiFetch(`/api/sessions/${sessionId}/demo`, { method: "PATCH" });
+}
+
 // --- Floorplan ---
 
 export function uploadFloorplan(sessionId: string, file: File): Promise<{ room_data: unknown }> {
@@ -41,8 +52,11 @@ export function uploadFloorplan(sessionId: string, file: File): Promise<{ room_d
 
 // --- Pipeline ---
 
-export function runPipeline(sessionId: string): Promise<{ status: string }> {
-  return apiFetch(`/api/sessions/${sessionId}/pipeline`, { method: "POST" });
+export function runPipeline(
+  sessionId: string,
+  mode: "fast" | "pro" = "fast",
+): Promise<{ status: string; mode: string }> {
+  return apiFetch(`/api/sessions/${sessionId}/pipeline?mode=${mode}`, { method: "POST" });
 }
 
 // --- Jobs ---
@@ -75,6 +89,17 @@ export function cancelSession(sessionId: string): Promise<{ status: string }> {
 }
 
 // --- Stubs for frontend components (endpoints not yet wired) ---
+
+export function selectFurniture(
+  sessionId: string,
+  itemIds: string[],
+): Promise<{ selected: number; total: number }> {
+  return apiFetch(`/api/sessions/${sessionId}/select-furniture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item_ids: itemIds }),
+  });
+}
 
 export function createCheckout(sessionId: string): Promise<{ payment_link: string }> {
   return apiFetch(`/api/sessions/${sessionId}/checkout`, { method: "POST" });

@@ -9,7 +9,6 @@ import { EnsoLogo } from "./enso-logo";
 interface FurnitureSidebarProps {
   sessionId: string;
   items: FurnitureItem[];
-  onApprove?: (selectedIds: string[]) => void;
 }
 
 function formatPrice(price: number, currency: string): string {
@@ -25,7 +24,7 @@ function formatPrice(price: number, currency: string): string {
   }
 }
 
-export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSidebarProps) {
+export function FurnitureSidebar({ sessionId, items }: FurnitureSidebarProps) {
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(items.filter((i) => i.selected).map((i) => i.id)),
   );
@@ -259,29 +258,9 @@ export function FurnitureSidebar({ sessionId, items, onApprove }: FurnitureSideb
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onApprove?.(Array.from(selected))}
-          disabled={selected.size === 0}
-          style={{
-            background: selected.size > 0 ? "#1a1a38" : "rgba(236,230,219,0.4)",
-            color: selected.size > 0 ? "#faf9f7" : "var(--text-3)",
-            padding: "0.75rem",
-            borderRadius: "var(--radius-full)",
-            fontWeight: 500,
-            fontSize: "0.875rem",
-            letterSpacing: "0.02em",
-            transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-            cursor: selected.size > 0 ? "pointer" : "not-allowed",
-            opacity: selected.size === 0 ? 0.5 : 1,
-            border: "none",
-          }}
-        >
-          Approve Selection
-        </button>
-
         <CheckoutButton
           sessionId={sessionId}
+          selectedIds={Array.from(selected)}
           totalPrice={total}
           currency={currency}
           itemCount={selected.size}

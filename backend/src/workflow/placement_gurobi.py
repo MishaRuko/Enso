@@ -14,7 +14,6 @@ import logging
 from .. import db
 from ..furniture_placement.coord_convert import convert_all_placements
 from ..furniture_placement.furniture_agents import (
-    FurnitureItemSpec,
     constraints_to_optimizer_format,
     generate_furniture_constraints,
     generate_furniture_specs,
@@ -231,6 +230,30 @@ async def place_furniture_gurobi(session_id: str, job_id: str) -> dict:
             logger.warning("Trellis fallback failed (continuing without): %s", e)
 
         result = {"placements": api_placements}
+
+        # Save furniture items to DB so the sidebar shows them
+        for p in api_placements:
+            try:
+                db.upsert_furniture({
+                    "id": p["item_id"],
+                    "session_id": session_id,
+                    "retailer": "ikea" if p.get("buy_url") else "generated",
+                    "name": p.get("ikea_name") or p["name"],
+                    "price": p.get("price") or 0,
+                    "currency": p.get("currency") or "EUR",
+                    "image_url": p.get("image_url", ""),
+                    "product_url": p.get("buy_url", ""),
+                    "glb_url": p.get("glb_url", ""),
+                    "category": p.get("room_name", ""),
+                    "dimensions": {
+                        "width_cm": (p.get("size_m", {}).get("width", 0)) * 100,
+                        "depth_cm": (p.get("size_m", {}).get("length", 0)) * 100,
+                        "height_cm": (p.get("size_m", {}).get("height", 0)) * 100,
+                    },
+                    "selected": True,
+                })
+            except Exception:
+                logger.debug("Failed to upsert furniture item %s", p["item_id"])
 
         # Generate search queries (for reference / re-search)
         search_queries = specs_to_search_queries(specs, preferences)

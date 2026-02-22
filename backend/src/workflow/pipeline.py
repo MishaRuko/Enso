@@ -1,5 +1,6 @@
 """End-to-end pipeline orchestrator — chains search → placement."""
 
+import asyncio
 import logging
 import time
 
@@ -23,11 +24,12 @@ def _trace_event(step: str, message: str, **kwargs) -> dict:
     return evt
 
 
-async def run_full_pipeline(session_id: str) -> None:
+async def run_full_pipeline(session_id: str, *, mode: str = "fast") -> None:
     """Run the design pipeline: search → place → complete.
 
-    Updates session.status through each stage and creates design_jobs for tracing.
-    On failure, sets status to `{stage}_failed` and stops.
+    Args:
+        session_id: Design session ID.
+        mode: 'fast' (Gemini spatial reasoning) or 'pro' (Gurobi integer programming optimizer).
     """
     job = db.create_job(session_id, phase="full_pipeline")
     job_id = job["id"]
@@ -68,15 +70,24 @@ async def run_full_pipeline(session_id: str) -> None:
         ))
         db.update_job(job_id, {"trace": trace})
 
-        # 2. Placement
-        trace.append(_trace_event("placing", "Computing furniture placement"))
+        # 2. Placement — mode selects engine
+        use_gurobi = mode == "pro"
+        engine_label = "Gurobi optimizer" if use_gurobi else "Gemini spatial"
+
+        trace.append(_trace_event("placing", f"Computing placement ({engine_label})"))
         db.update_session(session_id, {"status": "placing"})
         db.update_job(job_id, {"trace": trace})
 
         t0 = time.time()
         placement_job = db.create_job(session_id, phase="placement")
         try:
-            await place_furniture(session_id, placement_job["id"])
+            if use_gurobi:
+                from .placement_gurobi import place_furniture_gurobi
+                logger.info("Session %s: running Gurobi placement (pro mode)", session_id)
+                await place_furniture_gurobi(session_id, placement_job["id"])
+            else:
+                logger.info("Session %s: running Gemini placement (fast mode)", session_id)
+                await place_furniture(session_id, placement_job["id"])
         except Exception:
             logger.exception("Session %s: placement failed", session_id)
             duration_ms = (time.time() - t0) * 1000
@@ -89,7 +100,7 @@ async def run_full_pipeline(session_id: str) -> None:
         duration_ms = (time.time() - t0) * 1000
 
         trace.append(_trace_event(
-            "placing", "Placement complete", duration_ms=round(duration_ms),
+            "placing", f"Placement complete ({engine_label})", duration_ms=round(duration_ms),
         ))
 
         session_check = db.get_session(session_id)

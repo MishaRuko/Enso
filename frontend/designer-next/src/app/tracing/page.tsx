@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { listSessions, cancelSession } from "@/lib/backend";
+import { useRouter } from "next/navigation";
+import { listSessions, cancelSession, toggleDemo } from "@/lib/backend";
 import type { DesignSession } from "@/lib/types";
 
 const PROCESSING_STATUSES = new Set([
@@ -38,10 +39,27 @@ function statusLabel(status: string): string {
 }
 
 export default function TracingPage() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<DesignSession[]>([]);
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionsRef = useRef<DesignSession[]>([]);
+
+  const demoCount = sessions.filter((s) => s.demo_selected).length;
+
+  async function handleToggleDemo(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      const { demo_selected } = await toggleDemo(id);
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, demo_selected } : s)));
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleDemo() {
+    router.push("/tracing/demo");
+  }
 
   async function fetchSessions() {
     try {
@@ -81,9 +99,21 @@ export default function TracingPage() {
     <div style={styles.page}>
       <div style={styles.headerRow}>
         <h2 style={styles.heading}>Pipeline Traces</h2>
-        <Link href="/" style={styles.homeLink}>
-          Home
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          {demoCount > 0 && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleDemo}
+              style={{ padding: "0.5rem 1.25rem", fontSize: "0.8125rem" }}
+            >
+              Demo {demoCount} selected
+            </button>
+          )}
+          <Link href="/" style={styles.homeLink}>
+            Home
+          </Link>
+        </div>
       </div>
 
       {loading && <div style={styles.empty}>Loading...</div>}
@@ -100,6 +130,7 @@ export default function TracingPage() {
         <table style={styles.table}>
           <thead>
             <tr>
+              <th style={{ ...styles.th, width: 50, textAlign: "center" }}>Demo</th>
               {["Session ID", "Client", "Created", "Status", "Floorplan", "Furniture", ""].map(
                 (h) => (
                   <th key={h} style={styles.th}>
@@ -113,9 +144,21 @@ export default function TracingPage() {
             {sessions.map((s) => (
               <tr
                 key={s.id}
-                style={styles.row}
+                style={{
+                  ...styles.row,
+                  background: s.demo_selected ? "var(--accent-subtle)" : undefined,
+                }}
                 onClick={() => window.location.assign(`/tracing/${s.id}`)}
               >
+                <td style={{ ...styles.td, textAlign: "center", width: 50 }}>
+                  <input
+                    type="checkbox"
+                    checked={!!s.demo_selected}
+                    onChange={(e) => handleToggleDemo(s.id, e as unknown as React.MouseEvent)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ cursor: "pointer", accentColor: "var(--accent)" }}
+                  />
+                </td>
                 <td style={{ ...styles.td, fontFamily: "monospace", fontSize: "0.82rem" }}>
                   {s.id}
                 </td>
