@@ -82,21 +82,10 @@ export default function VoiceAgent({
             return `Room type set to ${params.type}`;
           },
           create_vision_board: async () => {
-            try {
-              // Save current preferences to DB before generating the board,
-              // so the backend has real ElevenLabs data (not an empty object).
-              await fetch(`/api/sessions/${sessionId}/preferences`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(preferencesRef.current),
-              });
-              // Kick off board generation (non-blocking — returns pending immediately).
-              // The consultation page will poll for miro_board_url and display it when ready.
-              await fetch(`/api/sessions/${sessionId}/miro`, { method: "POST" });
-              return "Vision board is being generated and will be ready in a couple of minutes";
-            } catch {
-              return "Vision board creation failed, continuing without it";
-            }
+            // Board generation is deferred to complete_consultation so it uses
+            // the full set of preferences rather than the partial set available
+            // at Step 3.5. Just acknowledge and continue the interview.
+            return "Vision board will be generated at the end of the consultation with all collected preferences";
           },
           complete_consultation: async () => {
             // Use preferencesRef.current — NOT onComplete's stale closure over React state.

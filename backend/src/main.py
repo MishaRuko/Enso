@@ -195,9 +195,6 @@ async def create_miro_board(session_id: str):
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    existing_url = session.get("miro_board_url")
-    if existing_url:
-        return {"miro_board_url": existing_url, "board_id": _extract_board_id(existing_url), "status": "ready"}
     preferences = session.get("preferences") or {}
     brief = _preferences_to_brief(preferences)
 
