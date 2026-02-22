@@ -90,12 +90,7 @@ export default function TextIntake({
       }
 
       const result = await res.json();
-      const {
-        assistant_text: assistantText,
-        brief,
-        missing_fields: missingFields,
-        done,
-      } = result;
+      const { assistant_text: assistantText, brief, missing_fields: missingFields, done } = result;
 
       // Update state
       setState({
@@ -189,9 +184,7 @@ export default function TextIntake({
           lineHeight: "1.5",
         }}
       >
-        <div>
-          Agent: {state.last_assistant_text}
-        </div>
+        <div>Agent: {state.last_assistant_text}</div>
         {transcript.map((line, i) => (
           <div key={i} style={{ marginTop: "0.5rem" }}>
             {line}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { createSession } from "@/lib/backend";
 import { EnsoLogo } from "@/components/enso-logo";
 import { HeroScene } from "@/components/hero-scene";
@@ -269,7 +269,9 @@ export default function HomePage() {
         }}
       >
         {/* 3D scene behind everything */}
-        <HeroScene scrollProgress={scrollProgress} />
+        <Suspense fallback={null}>
+          <HeroScene scrollProgress={scrollProgress} />
+        </Suspense>
 
         {/* Subtle gradient overlay for depth */}
         <div

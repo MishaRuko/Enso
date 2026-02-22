@@ -1,8 +1,9 @@
 "use client";
 
-import { Component, Suspense, useMemo, useState, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
 import { Box3, Vector3 } from "three";
+import type { Group } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import type { FurnitureItem, FurniturePlacement } from "@/lib/types";
 
@@ -17,8 +18,9 @@ function isIkeaGlb(item?: FurnitureItem): boolean {
   return url.includes("ikea.com") || url.includes("ikea-static");
 }
 
-function GLBModel({ url, item }: FurnitureModelInnerProps) {
+function GLBModel({ url, placement, item }: FurnitureModelInnerProps) {
   const { scene } = useGLTF(url);
+  const groupRef = useRef<Group>(null);
 
   const cloned = useMemo(() => {
     const c = scene.clone();
@@ -40,19 +42,33 @@ function GLBModel({ url, item }: FurnitureModelInnerProps) {
       c.scale.setScalar(scale);
     }
 
-    // Position bottom at y=0
-    const scaledBox = new Box3().setFromObject(c);
-    c.position.y -= scaledBox.min.y;
     // Center horizontally on origin so placement position is the center
+    const scaledBox = new Box3().setFromObject(c);
     const center = new Vector3();
     scaledBox.getCenter(center);
     c.position.x -= center.x;
     c.position.z -= center.z;
+    // Position bottom at y=0 (ground clipping fix from misha)
+    c.position.y -= scaledBox.min.y;
 
     return c;
   }, [scene, item]);
 
-  return <primitive object={cloned} castShadow receiveShadow />;
+  // After mount, re-check Y alignment to fix rotation-induced clipping
+  useEffect(() => {
+    if (!groupRef.current) return;
+    const box = new Box3().setFromObject(groupRef.current);
+    const yOffset = -box.min.y;
+    if (Math.abs(yOffset) > 0.001) {
+      groupRef.current.position.y = placement.position.y + yOffset;
+    }
+  }, [cloned, placement.position.y]);
+
+  return (
+    <group ref={groupRef}>
+      <primitive object={cloned} castShadow receiveShadow />
+    </group>
+  );
 }
 
 interface PlaceholderBoxProps {

@@ -1,5 +1,6 @@
 """Floorplan processing pipeline — Gemini analysis + isometric render + Trellis v2 room GLB."""
 
+import asyncio
 import base64
 import json
 import logging
@@ -84,48 +85,50 @@ async def process_floorplan(session_id: str) -> FloorplanAnalysis:
 
         image_data_url = await _to_data_url(floorplan_url)
 
-        # --- Step 1: Gemini analyses the ORIGINAL floorplan ---
-        logger.info("Session %s: analysing floorplan with Gemini", session_id)
-        t0 = time.time()
+        # --- Steps 1+2 in parallel: Gemini analysis + isometric render ---
+        preferences = session.get("preferences") or {}
+        prompt = floorplan_analysis_prompt()
+        render_prompt = build_render_prompt(preferences)
+
+        logger.info("Session %s: running Gemini analysis + isometric render in parallel", session_id)
         trace.append(_trace_event("gemini_analysis", "Analysing floorplan with Gemini"))
+        trace.append(_trace_event("isometric_render", "Generating isometric render"))
         db.update_job(job_id, {"trace": trace})
 
-        prompt = floorplan_analysis_prompt()
-        raw_response = await call_gemini_with_image(prompt, image_data_url)
+        t0 = time.time()
 
+        async def _gemini_analysis():
+            return await call_gemini_with_image(prompt, image_data_url)
+
+        async def _isometric_render():
+            return await generate_colored_render(image_data_url, preferences)
+
+        raw_response, colored_render = await asyncio.gather(
+            _gemini_analysis(), _isometric_render(),
+        )
+        parallel_ms = (time.time() - t0) * 1000
+
+        # Parse Gemini result
         json_str = _extract_json(raw_response)
         data = json.loads(json_str)
         analysis = FloorplanAnalysis.model_validate(data)
         room_data = analysis.model_dump()
         rooms_found = len(analysis.rooms)
-        duration_ms = (time.time() - t0) * 1000
 
         trace.append(_trace_event(
             "parsed", f"Gemini found {rooms_found} room(s)",
-            duration_ms=round(duration_ms),
+            duration_ms=round(parallel_ms),
             input_prompt=prompt,
             input_image=floorplan_url,
             output_text=raw_response[:4000],
             model=GEMINI_MODEL,
         ))
-        db.update_job(job_id, {"trace": trace})
-
-        # --- Step 2: Single Nano Banana call → isometric render ---
-        preferences = session.get("preferences") or {}
-        logger.info("Session %s: generating isometric render via Nano Banana", session_id)
-        t0 = time.time()
-        trace.append(_trace_event("isometric_render", "Generating isometric render"))
-        db.update_job(job_id, {"trace": trace})
-
-        render_prompt = build_render_prompt(preferences)
-        colored_render = await generate_colored_render(image_data_url, preferences)
-        duration_ms = (time.time() - t0) * 1000
-
         trace.append(_trace_event(
             "isometric_render", "Isometric render complete",
-            duration_ms=round(duration_ms),
+            duration_ms=round(parallel_ms),
             input_prompt=render_prompt,
             input_image=floorplan_url,
+            output_image=colored_render,
             model="google/gemini-3-pro-image-preview",
         ))
         db.update_job(job_id, {"trace": trace})

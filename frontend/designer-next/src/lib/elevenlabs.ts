@@ -37,7 +37,7 @@ let currentCallbacks: ConversationCallbacks | null = null;
  */
 export async function startCall(
   sessionId: string,
-  callbacks: ConversationCallbacks = {}
+  callbacks: ConversationCallbacks = {},
 ): Promise<void> {
   currentSessionId = sessionId;
   currentCallbacks = callbacks;
@@ -83,7 +83,7 @@ export async function stopCall(): Promise<void> {
  */
 export async function processTurn(
   userText: string,
-  callbacks?: ConversationCallbacks
+  callbacks?: ConversationCallbacks,
 ): Promise<{
   assistantText: string;
   done: boolean;
@@ -101,11 +101,7 @@ export async function processTurn(
     // Use text-based endpoint
     const response = await voiceIntakeTurn(currentSessionId, userText);
 
-    const {
-      assistant_text: assistantText,
-      done,
-      missing_fields: missingFields,
-    } = response;
+    const { assistant_text: assistantText, done, missing_fields: missingFields } = response;
 
     currentCallbacks?.onTranscript?.(userText);
     currentCallbacks?.onAssistantText?.(assistantText);

@@ -2,7 +2,9 @@
 
 import logging
 
+import httpx
 from openai import AsyncOpenAI
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..config import CLAUDE_MODEL, GEMINI_MODEL, OPENROUTER_API_KEY
 
@@ -19,7 +21,14 @@ _EXTRA_HEADERS = {
     "X-Title": "HomeDesigner",
 }
 
+_llm_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException)),
+)
 
+
+@_llm_retry
 async def call_claude(
     messages: list[dict],
     system: str | None = None,
@@ -39,6 +48,7 @@ async def call_claude(
     return resp.choices[0].message.content or ""
 
 
+@_llm_retry
 async def call_gemini(
     messages: list[dict],
     temperature: float = 0.3,
@@ -75,6 +85,7 @@ async def call_gemini_with_image(
     return await call_gemini_with_images(prompt, [image_url_or_base64], temperature=temperature)
 
 
+@_llm_retry
 async def call_gemini_with_images(
     prompt: str,
     image_urls: list[str],
@@ -95,6 +106,7 @@ async def call_gemini_with_images(
     return resp.choices[0].message.content or ""
 
 
+@_llm_retry
 async def call_claude_with_image(
     prompt: str,
     image_url_or_base64: str,

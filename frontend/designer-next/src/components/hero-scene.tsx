@@ -1,10 +1,23 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF, Float } from "@react-three/drei";
 import type * as THREE from "three";
 import { Box3, Vector3 } from "three";
+
+class SceneErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    return this.state.hasError ? null : this.props.children;
+  }
+}
 
 /* ── Preload the demo room GLB so it's cached before the Canvas mounts ── */
 const DEMO_ROOM_URL = "/demo-room.glb";
@@ -16,7 +29,6 @@ function RoomModel({ scrollRef }: { scrollRef: React.MutableRefObject<number> })
   const { scene } = useGLTF(DEMO_ROOM_URL);
   const groupRef = useRef<THREE.Group>(null);
 
-  // Center and scale the model on first mount
   useEffect(() => {
     if (!groupRef.current) return;
     const box = new Box3().setFromObject(scene);
@@ -26,8 +38,11 @@ function RoomModel({ scrollRef }: { scrollRef: React.MutableRefObject<number> })
     const scale = 3 / maxDim; // fit into ~3 unit radius
     const scaledWidth = size.x * scale;
     groupRef.current.scale.setScalar(scale);
-    // Offset right by ~60% of the scaled width so the model sits in the right half
-    groupRef.current.position.set(-center.x * scale + scaledWidth * 0.6, -center.y * scale + 0.2, -center.z * scale);
+    groupRef.current.position.set(
+      -center.x * scale + scaledWidth * 0.6,
+      -center.y * scale + 0.2,
+      -center.z * scale,
+    );
   }, [scene]);
 
   useFrame((_state, delta) => {
@@ -91,15 +106,17 @@ export function HeroScene({ scrollProgress }: HeroSceneProps) {
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>
-      <Canvas
-        shadows
-        camera={{ position: [1.8, 2.5, 5.5], fov: 40 }}
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-        style={{ width: "100%", height: "100%" }}
-        dpr={[1, 1.5]}
-      >
-        <Scene scrollRef={scrollRef} />
-      </Canvas>
+      <SceneErrorBoundary>
+        <Canvas
+          shadows
+          camera={{ position: [1.8, 2.5, 5.5], fov: 40 }}
+          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+          style={{ width: "100%", height: "100%" }}
+          dpr={[1, 1.5]}
+        >
+          <Scene scrollRef={scrollRef} />
+        </Canvas>
+      </SceneErrorBoundary>
     </div>
   );
 }

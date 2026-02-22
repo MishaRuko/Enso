@@ -1,5 +1,6 @@
 """Stripe checkout workflow — creates payment link for selected furniture items."""
 
+import asyncio
 import logging
 
 import stripe
@@ -34,8 +35,8 @@ async def create_checkout(session_id: str, *, success_url: str = "") -> str:
     line_items: list[dict] = []
 
     for item in items:
-        # Create a Stripe Product for each furniture item
-        product = stripe.Product.create(
+        product = await asyncio.to_thread(
+            stripe.Product.create,
             name=item["name"],
             metadata={
                 "session_id": session_id,
@@ -45,11 +46,11 @@ async def create_checkout(session_id: str, *, success_url: str = "") -> str:
             images=[item["image_url"]] if item.get("image_url") else [],
         )
 
-        # Price in cents — Stripe expects integer amounts in smallest currency unit
         currency = (item.get("currency") or "EUR").lower()
         unit_amount = int(round(item["price"] * 100))
 
-        price = stripe.Price.create(
+        price = await asyncio.to_thread(
+            stripe.Price.create,
             product=product.id,
             unit_amount=unit_amount,
             currency=currency,
@@ -60,11 +61,11 @@ async def create_checkout(session_id: str, *, success_url: str = "") -> str:
             "quantity": 1,
         })
 
-    # Build success URL — redirect back to the session page after payment
     if not success_url:
         success_url = f"http://localhost:3000/session/{session_id}?payment=success"
 
-    payment_link = stripe.PaymentLink.create(
+    payment_link = await asyncio.to_thread(
+        stripe.PaymentLink.create,
         line_items=line_items,
         after_completion={
             "type": "redirect",

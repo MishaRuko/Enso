@@ -1,5 +1,6 @@
 """IKEA product scraper — searches IKEA's public search API via httpx."""
 
+import asyncio
 import logging
 import re
 import uuid
@@ -174,20 +175,23 @@ async def search_ikea(
         logger.info("IKEA search for %r returned %d results (no GLB filter)", query, len(results))
         return results
 
-    # Try GLB extraction for each candidate until we have enough
-    results: list[FurnitureItem] = []
-    for item in candidates:
-        if len(results) >= limit:
-            break
+    # Try GLB extraction for all candidates in parallel, then take first `limit` with GLB
+    sem = asyncio.Semaphore(5)
+
+    async def _extract_with_sem(item: FurnitureItem) -> FurnitureItem:
         if not item.product_url:
-            continue
-        glb_url = await extract_ikea_glb(item.product_url)
-        if glb_url:
-            item.glb_url = glb_url
-            results.append(item)
-            logger.info("GLB found for %s: %s", item.name, glb_url)
-        else:
-            logger.info("No GLB for %s, skipping", item.name)
+            return item
+        async with sem:
+            glb_url = await extract_ikea_glb(item.product_url)
+            if glb_url:
+                item.glb_url = glb_url
+                logger.info("GLB found for %s: %s", item.name, glb_url)
+            else:
+                logger.info("No GLB for %s, skipping", item.name)
+            return item
+
+    candidates = list(await asyncio.gather(*[_extract_with_sem(c) for c in candidates]))
+    results: list[FurnitureItem] = [c for c in candidates if c.glb_url][:limit]
 
     logger.info("IKEA search for %r: %d/%d candidates have GLB", query, len(results), len(candidates))
     return results

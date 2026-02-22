@@ -6,6 +6,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 import asyncio
 import re as _re
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -89,11 +90,19 @@ async def health():
     return {"status": "ok", "service": "homedesigner"}
 
 
+_GLB_ALLOWED_HOSTS = (".ikea.com", ".fal.ai", ".fal.run", ".sketchfab.com", ".poly.pizza")
+
+
 @app.get("/api/proxy-glb")
 async def proxy_glb(url: str):
     """Proxy external GLB files to avoid CORS issues (e.g. IKEA CDN)."""
     if not url.startswith("https://"):
         raise HTTPException(400, "Only HTTPS URLs allowed")
+    hostname = urlparse(url).hostname or ""
+    if hostname != "localhost" and not any(
+        hostname.endswith(d) for d in _GLB_ALLOWED_HOSTS
+    ):
+        raise HTTPException(403, {"error": "Domain not allowed"})
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
             resp = await client.get(url)
@@ -285,13 +294,24 @@ async def add_miro_item(session_id: str, body: MiroItemRequest):
     return {"ok": True, "item_id": result.get("id", "")}
 
 
+_ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
 @app.post("/api/sessions/{session_id}/floorplan")
 async def upload_floorplan(session_id: str, file: UploadFile):
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    if file.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Only PNG, JPEG, and WebP images are accepted")
+
     contents = await file.read()
+
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
+
     ext = (file.filename or "plan.png").rsplit(".", 1)[-1]
     storage_path = f"{session_id}/floorplan.{ext}"
     content_type = file.content_type or "image/png"
@@ -299,14 +319,16 @@ async def upload_floorplan(session_id: str, file: UploadFile):
     public_url = db.upload_to_storage("floorplans", storage_path, contents, content_type)
     updated = db.update_session(session_id, {"floorplan_url": public_url, "status": "analyzing_floorplan"})
 
-    # Fire-and-forget floorplan analysis with error logging
     async def _run_floorplan():
         try:
             await process_floorplan(session_id)
         except Exception:
             logging.getLogger("floorplan_task").exception("Floorplan task failed for %s", session_id)
+            db.update_session(session_id, {"status": "floorplan_failed"})
 
-    asyncio.create_task(_run_floorplan())
+    task = asyncio.create_task(_run_floorplan())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
     return {"floorplan_url": updated["floorplan_url"]}
 
@@ -329,9 +351,11 @@ async def start_search(session_id: str):
             _logger.info("Furniture search complete for %s", session_id)
         except Exception:
             _logger.exception("Furniture search failed for %s", session_id)
+            db.update_session(session_id, {"status": "search_failed"})
 
     task = asyncio.create_task(_run())
-    task.add_done_callback(lambda t: t.result() if not t.cancelled() and not t.exception() else None)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return {"job_id": job["id"]}
 
 
@@ -346,27 +370,47 @@ async def update_placements(session_id: str, body: PlacementResult):
 
 @app.post("/api/sessions/{session_id}/place")
 async def start_placement(session_id: str):
-    from .workflow.placement import place_furniture
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     db.update_session(session_id, {"status": "placing"})
     job = db.create_job(session_id, phase="placement")
 
+    has_grid = session.get("grid_data") and isinstance(session.get("grid_data"), dict)
+
     async def _run():
-        logger = logging.getLogger("placement_task")
+        _logger = logging.getLogger("placement_task")
         try:
-            logger.info("Starting placement for %s", session_id)
-            await place_furniture(session_id, job["id"])
+            if has_grid:
+                from .workflow.placement_gurobi import place_furniture_gurobi
+                _logger.info("Starting Gurobi placement for %s", session_id)
+                await place_furniture_gurobi(session_id, job["id"])
+            else:
+                from .workflow.placement import place_furniture
+                _logger.info("No grid_data — falling back to Gemini placement for %s", session_id)
+                await place_furniture(session_id, job["id"])
             db.update_session(session_id, {"status": "complete"})
-            logger.info("Placement complete for %s", session_id)
+            _logger.info("Placement complete for %s", session_id)
         except Exception:
-            logger.exception("Placement failed for %s", session_id)
-            db.update_session(session_id, {"status": "placing_failed"})
+            _logger.exception("Placement failed for %s", session_id)
+            db.update_session(session_id, {"status": "placement_failed"})
 
     task = asyncio.create_task(_run())
-    task.add_done_callback(lambda t: t.result() if not t.cancelled() and not t.exception() else None)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return {"job_id": job["id"]}
+
+
+@app.get("/api/sessions/{session_id}/grid")
+async def get_grid(session_id: str):
+    """Get the FloorPlanGrid for a session."""
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    grid_data = session.get("grid_data")
+    if not grid_data:
+        raise HTTPException(status_code=404, detail="No grid data — upload a floorplan first")
+    return grid_data
 
 
 @app.post("/api/sessions/{session_id}/pipeline")
@@ -374,65 +418,38 @@ async def start_pipeline(session_id: str):
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    asyncio.create_task(run_full_pipeline(session_id))
+    async def _run_pipeline():
+        try:
+            await run_full_pipeline(session_id)
+        except Exception:
+            logging.getLogger("pipeline_task").exception("Pipeline task failed for %s", session_id)
+            sess = db.get_session(session_id)
+            current = sess.get("status", "unknown") if sess else "unknown"
+            if not current.endswith("_failed"):
+                db.update_session(session_id, {"status": "pipeline_failed"})
+
+    task = asyncio.create_task(_run_pipeline())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return {"status": "started"}
 
 
 @app.post("/api/sessions/{session_id}/source-models")
 async def source_placed_models(session_id: str):
-    """Re-source GLB models for placed furniture items: IKEA extraction then TRELLIS."""
-    from .tools.fal_client import generate_3d_model, upload_to_fal
-    from .tools.ikea_glb import extract_ikea_glb
-
-    logger = logging.getLogger("source_models")
+    """Re-source GLB models for placed furniture items using parallel sourcing."""
+    from .workflow.model_sourcing import source_all_models
 
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    placements = (session.get("placements") or {}).get("placements", [])
-    if not placements:
-        return {"sourced": 0, "message": "No placements found"}
-
-    placed_ids = {p["item_id"] for p in placements}
-
-    # Get furniture items from DB
-    all_items = db.list_furniture(session_id)
-    placed_items = [i for i in all_items if i["id"] in placed_ids and not i.get("glb_url")]
-
-    sourced = 0
-    for item in placed_items:
-        product_url = item.get("product_url", "")
-        glb_url = None
-
-        # Try IKEA GLB extraction first
-        if product_url and "ikea" in product_url.lower():
-            glb_url = await extract_ikea_glb(product_url)
-            if glb_url:
-                logger.info("IKEA GLB for %s: %s", item.get("name", "?"), glb_url)
-
-        # Fall back to TRELLIS if no IKEA GLB and has image
-        if not glb_url and item.get("image_url"):
-            logger.info("Trying TRELLIS for %s...", item.get("name", "?"))
-            try:
-                import httpx
-                async with httpx.AsyncClient(timeout=httpx.Timeout(15.0)) as http:
-                    img_resp = await http.get(item["image_url"])
-                    img_resp.raise_for_status()
-                    fal_url = await upload_to_fal(img_resp.content, img_resp.headers.get("content-type", "image/jpeg"))
-                glb_url = await generate_3d_model(fal_url, model="trellis-2")
-                logger.info("TRELLIS GLB for %s: %s", item.get("name", "?"), glb_url)
-            except Exception:
-                logger.exception("TRELLIS failed for %s", item.get("name", "?"))
-
-        if glb_url:
-            try:
-                db.update_furniture(item["id"], {"glb_url": glb_url})
-            except Exception:
-                pass
-            sourced += 1
-
-    return {"sourced": sourced, "total_placed": len(placed_ids)}
+    summary = await source_all_models(session_id)
+    return {
+        "sourced": summary["success"],
+        "total_placed": summary["total"],
+        "failed": summary["failed"],
+        "skipped": summary["skipped"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +477,7 @@ async def list_session_jobs(session_id: str):
 
 
 # In-memory cancel signals for running pipelines
+_background_tasks: set[asyncio.Task] = set()
 _cancel_events: dict[str, asyncio.Event] = {}
 
 
@@ -476,6 +494,23 @@ def cleanup_cancel_event(session_id: str) -> None:
 def is_cancelled(session_id: str) -> bool:
     event = _cancel_events.get(session_id)
     return event.is_set() if event else False
+
+
+@app.post("/api/sessions/{session_id}/checkout")
+async def checkout(session_id: str):
+    from .workflow.checkout import create_checkout
+
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        url = await create_checkout(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logging.getLogger("checkout").exception("Checkout failed for %s", session_id)
+        raise HTTPException(status_code=502, detail="Stripe checkout failed")
+    return {"payment_link": url}
 
 
 @app.post("/api/sessions/{session_id}/cancel")

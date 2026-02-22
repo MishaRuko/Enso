@@ -12,6 +12,7 @@ from ..config import OPENROUTER_API_KEY
 logger = logging.getLogger(__name__)
 
 _MODEL = "google/gemini-3-pro-image-preview"
+_NANO_BANANA_MODEL = _MODEL
 
 
 def _extract_image_from_response(resp) -> str | None:
@@ -142,4 +143,102 @@ async def generate_colored_render(
 
     except Exception:
         logger.exception("Nano Banana render failed, using original image")
+        return image_url
+
+
+# ---------------------------------------------------------------------------
+# Room Segmentation — fills distinct rooms with solid colors for analysis
+# ---------------------------------------------------------------------------
+
+_SEGMENTATION_PROMPT = (
+    "This is a floor plan. Your task is to fill the empty spaces of individual/distinct rooms with different bright solid colours. "
+    "CRITICAL RULES:"
+    "1. DO NOT add, remove, or modify any walls, doors, or structural lines. The black structural elements must remain PIXEL-PERFECT identical."
+    "2. ONLY color the empty white spaces inside the rooms."
+    "3. Do not hallucinate new dividers, partitions, or furniture."
+    "4. Keep the coloured regions solid and uniform inside, with no artifacts."
+    "This is a strict coloring task, not a design task. Preserve the original structure exactly."
+)
+
+
+async def generate_segmented_rooms(image_url: str) -> str:
+    """Generate a segmented floor plan where each room is filled with a unique solid color.
+
+    This aids in programmatically detecting rooms and their shapes by analyzing the unique colors.
+
+    Args:
+        image_url: Public URL or base64 data-URL of the floorplan.
+
+    Returns:
+        Base64 data-URL of the segmented image (data:image/png;base64,...),
+        or the original URL if generation fails.
+    """
+    try:
+        client = AsyncOpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=OPENROUTER_API_KEY,
+        )
+
+        resp = await client.chat.completions.create(
+            model=_NANO_BANANA_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _SEGMENTATION_PROMPT},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url},
+                        },
+                    ],
+                }
+            ],
+            extra_body={"modalities": ["image", "text"]},
+            extra_headers={
+                "HTTP-Referer": "https://homedesigner.ai",
+                "X-Title": "HomeDesigner",
+            },
+        )
+
+        message = resp.choices[0].message
+
+        # Method 1: OpenRouter may include images in a non-standard field
+        images = getattr(message, "images", None)
+        if images and len(images) > 0:
+            try:
+                data_url = images[0]["image_url"]["url"]
+                logger.info("Nano Banana: segmentation succeeded (images field)")
+                return data_url
+            except (KeyError, TypeError, IndexError):
+                pass
+
+        # Method 2: Content may contain inline base64 data URL
+        content = message.content or ""
+        if content.startswith("data:image"):
+            logger.info("Nano Banana: segmentation succeeded (inline data URL)")
+            return content
+
+        # Method 3: Content blocks may contain image parts (multimodal response)
+        raw = resp.model_dump()
+        choices = raw.get("choices", [])
+        if choices:
+            msg = choices[0].get("message", {})
+            msg_content = msg.get("content")
+            if isinstance(msg_content, list):
+                for part in msg_content:
+                    if isinstance(part, dict):
+                        img_url = part.get("image_url", {})
+                        if isinstance(img_url, dict) and img_url.get("url", "").startswith("data:image"):
+                            logger.info("Nano Banana: segmentation succeeded (content array)")
+                            return img_url["url"]
+                        text = part.get("text", "")
+                        if text.startswith("data:image"):
+                            logger.info("Nano Banana: segmentation succeeded (text part)")
+                            return text
+
+        logger.warning("Nano Banana: no image in segmentation response, falling back to original")
+        return image_url
+
+    except Exception:
+        logger.exception("Nano Banana segmentation failed, using original image")
         return image_url
