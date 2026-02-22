@@ -35,6 +35,7 @@ function phaseIndex(status: string): number {
     placement_ready: 4,
     placement_failed: 4,
     complete: 5,
+    checkout: 5,
   };
   return map[status.toLowerCase()] ?? 0;
 }

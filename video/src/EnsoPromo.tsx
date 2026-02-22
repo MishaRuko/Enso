@@ -22,6 +22,7 @@ import { FloorplanScene } from "./scenes/FloorplanScene";
 import { FlythroughScene } from "./scenes/FlythroughScene";
 import { FurnitureScene } from "./scenes/FurnitureScene";
 import { PurchaseScene } from "./scenes/PurchaseScene";
+import { DemoVideoScene } from "./scenes/DemoVideoScene";
 import { OutroScene } from "./scenes/OutroScene";
 
 const durations = beatSyncedDurations();
@@ -36,7 +37,17 @@ const SCENES = [
   { id: "flythrough", dur: durations[6], Component: FlythroughScene },
   { id: "furniture", dur: durations[7], Component: FurnitureScene },
   { id: "purchase", dur: durations[8], Component: PurchaseScene },
-  { id: "outro", dur: durations[9], Component: OutroScene },
+  {
+    id: "demo-1",
+    dur: durations[9],
+    Component: () => <DemoVideoScene src="demo-1.mov" label="Live Demo" />,
+  },
+  {
+    id: "demo-2",
+    dur: durations[10],
+    Component: () => <DemoVideoScene src="demo-2.mov" label="Live Demo" />,
+  },
+  { id: "outro", dur: durations[11], Component: OutroScene },
 ];
 
 // Per-scene voice clips mapped to their absolute composition frame.
@@ -61,7 +72,7 @@ const VOICE_CLIPS: [number, string][] = [
   [6, "flythrough"],   // "and watch AI transform…"
   [7, "furniture"],    // "Every piece is real…"
   [8, "purchase"],     // "Love the result?…"
-  [9, "outro"],        // "Your space, complete."
+  [11, "outro"],       // "Your space, complete." (now index 11)
 ];
 
 // Varied transitions
@@ -75,7 +86,9 @@ const TRANSITION_TYPES: TransitionKind[] = [
   "fade",        // floorplan → flythrough
   "fade",        // flythrough → furniture
   "wipe-left",   // furniture → purchase (entering checkout)
-  "fade",        // purchase → outro
+  "fade",        // purchase → demo-1
+  "fade",        // demo-1 → demo-2
+  "fade",        // demo-2 → outro
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: transition presentation union
@@ -96,16 +109,30 @@ const GRAIN_SVG = encodeURIComponent(
 
 // First voice clip starts at the Problem scene
 const FIRST_VO_FRAME = sceneFrames[2];
+// Demo section start and end frames
+const DEMO_START_FRAME = sceneFrames[9];
+const DEMO_END_FRAME = sceneFrames[11];
 
 export const EnsoPromo: React.FC = () => {
   const frame = useCurrentFrame();
   const totalFrames = totalCompositionFrames();
 
-  // Music plays full volume during intro/tagline, ducks when voice starts
+  // Music plays full volume during intro/tagline, ducks when voice starts,
+  // mutes during demo (screen recordings have their own audio), returns for outro
   const musicVolume = interpolate(
     frame,
-    [0, FIRST_VO_FRAME, FIRST_VO_FRAME + 15, totalFrames - 60, totalFrames - 20, totalFrames],
-    [0.3, 0.3, 0.12, 0.12, 0.3, 0.3],
+    [
+      0,
+      FIRST_VO_FRAME,
+      FIRST_VO_FRAME + 15,
+      DEMO_START_FRAME - 30,
+      DEMO_START_FRAME,
+      DEMO_END_FRAME,
+      DEMO_END_FRAME + 15,
+      totalFrames - 20,
+      totalFrames,
+    ],
+    [0.3, 0.3, 0.12, 0.12, 0.0, 0.0, 0.3, 0.3, 0.3],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
 
@@ -119,7 +146,7 @@ export const EnsoPromo: React.FC = () => {
         filter: "saturate(1.06) contrast(1.02)",
       }}
     >
-      <Audio src={staticFile("music.mp3")} volume={musicVolume} />
+      <Audio src={staticFile("music.mp3")} volume={musicVolume} loop />
 
       {/* Per-scene voice clips — each placed at its scene's exact start frame */}
       {VOICE_CLIPS.map(([sceneIdx, name]) => (

@@ -7,7 +7,9 @@ const cache = new Map<string, GLTF>();
 
 export function useGLTFDelayed(filename: string): GLTF | null {
   const url = staticFile(filename);
-  const [handle] = useState(() => delayRender("Loading GLB: " + filename));
+  const [handle] = useState(() =>
+    delayRender("Loading GLB: " + filename, { timeoutInMilliseconds: 120_000 }),
+  );
   const [gltf, setGltf] = useState<GLTF | null>(cache.get(url) ?? null);
 
   useEffect(() => {
