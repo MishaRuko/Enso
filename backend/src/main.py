@@ -13,15 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-import re as _re
-
 from . import db
-<<<<<<< Updated upstream
 from .models.schemas import PlacementResult, UserPreferences
 from .routes import session, tools, voice, voice_intake
-=======
-from .models.schemas import UserPreferences
->>>>>>> Stashed changes
 from .tools.miro_mcp import generate_vision_board_with_miro_ai
 from .workflow.floorplan import process_floorplan
 from .workflow.pipeline import run_full_pipeline
